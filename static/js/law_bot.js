@@ -1,27 +1,26 @@
 /**
- * Arka - Legal AI Assistant Scripts
+ * Arka - Legal AI Assistant (v2 – Chat + Card Flow)
+ * Interactive Q&A with option cards, "Others" freetext, and final result cards.
  */
 
 let chatHistory = [];
+let questionCount = 0;
 
 document.addEventListener('DOMContentLoaded', () => {
 
     const sendBtn = document.getElementById('send-btn');
     const inputArea = document.getElementById('law-prompt-input');
-    const chatWindow = document.getElementById('chat-window');
+    const chatScroll = document.getElementById('law-chat-scroll');
+    const welcomeEl = document.getElementById('law-welcome');
+    const newChatBtn = document.getElementById('new-chat-btn');
 
-    // Auto-resize textarea
+    // ── Auto-resize textarea ──────────────────────────────────────────────
     inputArea.addEventListener('input', function () {
         this.style.height = 'auto';
-        this.style.height = (this.scrollHeight) + 'px';
-        if (this.scrollHeight > 200) {
-            this.style.overflowY = 'auto';
-        } else {
-            this.style.overflowY = 'hidden';
-        }
+        this.style.height = Math.min(this.scrollHeight, 150) + 'px';
     });
 
-    // Enter to send (Shift+Enter for newline)
+    // ── Enter to send ─────────────────────────────────────────────────────
     inputArea.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
@@ -31,173 +30,358 @@ document.addEventListener('DOMContentLoaded', () => {
 
     sendBtn.addEventListener('click', handleSend);
 
-    // Sidebar quick examples
-    const exampleChips = document.querySelectorAll('.example-chip');
-    exampleChips.forEach(chip => {
+    // ── Welcome chip quick-starts ─────────────────────────────────────────
+    document.querySelectorAll('.law-chip').forEach(chip => {
         chip.addEventListener('click', () => {
             const prompt = chip.getAttribute('data-prompt');
             inputArea.value = prompt;
-            inputArea.style.height = 'auto';
-            inputArea.style.height = (inputArea.scrollHeight) + 'px';
-            inputArea.focus();
+            handleSend();
         });
     });
 
-    // Mobile Sidebar toggle
-    const sidebarToggle = document.getElementById('sidebar-toggle');
-    const sidebar = document.getElementById('sidebar');
-    if (sidebarToggle) {
-        sidebarToggle.addEventListener('click', () => {
-            sidebar.classList.toggle('open');
-        });
-    }
+    // ── New Chat ──────────────────────────────────────────────────────────
+    newChatBtn.addEventListener('click', () => {
+        chatHistory = [];
+        questionCount = 0;
+        // Remove all messages (keep welcome)
+        const msgs = chatScroll.querySelectorAll('.law-msg');
+        msgs.forEach(m => m.remove());
+        // Show welcome again
+        if (welcomeEl) {
+            welcomeEl.style.display = '';
+        }
+        inputArea.value = '';
+        inputArea.style.height = 'auto';
+        inputArea.focus();
+    });
 
-    // Process Message
-    async function handleSend() {
-        const text = inputArea.value.trim();
+    // ── Handle Send ───────────────────────────────────────────────────────
+    async function handleSend(optionText) {
+        const text = optionText || inputArea.value.trim();
         if (!text) return;
 
-        // Reset UI
-        inputArea.value = '';
-        inputArea.style.height = '60px';
-        inputArea.focus();
-        if (window.innerWidth <= 768 && sidebar) {
-            sidebar.classList.remove('open');
+        // Hide welcome
+        if (welcomeEl) {
+            welcomeEl.style.display = 'none';
         }
 
-        appendUserMessage(text);
+        // Reset input
+        if (!optionText) {
+            inputArea.value = '';
+            inputArea.style.height = 'auto';
+        }
 
+        // Append user bubble
+        appendUserMsg(text);
         chatHistory.push({ role: 'user', content: text });
 
-        // Show loading state
+        // Loading
         sendBtn.classList.add('loading');
         sendBtn.disabled = true;
-        const loaderId = appendLoadingMessage();
+        const loaderId = appendLoadingMsg();
 
         try {
-            const response = await fetch('http://127.0.0.1:5000/api/law-chat', {
+            const response = await fetch('/api/law-chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     prompt: text,
-                    history: chatHistory.slice(-10) // Keep last 10 messages for context
+                    history: chatHistory.slice(-14)
                 })
             });
 
             const data = await response.json();
-
-            removeLoadingMessage(loaderId);
+            removeLoadingMsg(loaderId);
 
             if (data.success) {
-                const aiMessage = data.response.message || "I couldn't generate a clear response.";
-                const aiQuestions = data.response.questions || [];
+                const parsed = data.response;
+                chatHistory.push({ role: 'assistant', content: JSON.stringify(parsed) });
 
-                chatHistory.push({ role: 'assistant', content: aiMessage });
-
-                appendAIMessage(aiMessage, aiQuestions);
+                if (parsed.phase === 'final') {
+                    renderFinalCards(parsed.cards);
+                } else if (parsed.phase === 'questioning') {
+                    questionCount++;
+                    renderQuestionMsg(parsed);
+                } else {
+                    // Fallback: treat as old format or plain text
+                    const msg = parsed.message || JSON.stringify(parsed);
+                    renderPlainAIMsg(msg);
+                }
             } else {
                 showToast(data.error || 'Failed to get response', 'error');
-                appendAIMessage("Error: " + (data.error || "Something went wrong."), []);
+                renderPlainAIMsg('⚠️ ' + (data.error || 'Something went wrong.'));
             }
-        } catch (error) {
-            console.error("Chat Error:", error);
-            removeLoadingMessage(loaderId);
+        } catch (err) {
+            console.error('Chat Error:', err);
+            removeLoadingMsg(loaderId);
             showToast('Server connection failed.', 'error');
-            appendAIMessage("Connection Error. Please try again.", []);
+            renderPlainAIMsg('⚠️ Connection Error. Please check if the server is running and try again.');
         } finally {
             sendBtn.classList.remove('loading');
             sendBtn.disabled = false;
         }
     }
 
-    function appendUserMessage(text) {
-        const wrap = document.createElement('div');
-        wrap.className = 'message user-message';
-        wrap.innerHTML = `<div class="message-content">${escapeHTML(text)}</div>`;
-        chatWindow.appendChild(wrap);
-        scrollToBottom();
+    // ── Append User Message ───────────────────────────────────────────────
+    function appendUserMsg(text) {
+        const wrap = el('div', 'law-msg law-msg-user');
+        wrap.innerHTML = `
+            <div class="law-msg-avatar">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                    <circle cx="12" cy="7" r="4"></circle>
+                </svg>
+            </div>
+            <div class="law-msg-body">
+                <div class="law-msg-bubble">${escapeHTML(text)}</div>
+            </div>
+        `;
+        chatScroll.appendChild(wrap);
+        scrollBottom();
     }
 
-    function appendAIMessage(markdownText, questions) {
-        const wrap = document.createElement('div');
-        wrap.className = 'message ai-message';
+    // ── Render Question Message ───────────────────────────────────────────
+    function renderQuestionMsg(data) {
+        const wrap = el('div', 'law-msg law-msg-ai');
 
-        // Parse markdown 
-        let parsedHtml = '';
-        if (typeof marked !== 'undefined') {
-            parsedHtml = marked.parse(markdownText);
-        } else {
-            parsedHtml = `<p>${escapeHTML(markdownText).replace(/\n/g, '<br>')}</p>`;
+        let bubbleContent = '';
+        if (data.message) {
+            bubbleContent = parseMd(data.message);
         }
 
-        let contentObj = document.createElement('div');
-        contentObj.className = 'message-content';
-        contentObj.innerHTML = parsedHtml;
-        wrap.appendChild(contentObj);
+        let questionHTML = '';
+        if (data.question) {
+            questionHTML = `
+                <div class="law-question-section">
+                    <div class="law-question-label">Question ${questionCount}</div>
+                    <div class="law-question-text">${escapeHTML(data.question)}</div>
+                    <div class="law-options-grid" id="options-${Date.now()}">
+                        ${(data.options || []).map((opt, i) => `
+                            <button class="law-option-card" data-option="${escapeAttr(opt)}">
+                                <span class="law-option-num">${String.fromCharCode(65 + i)}</span>
+                                <span class="law-option-label">${escapeHTML(opt)}</span>
+                            </button>
+                        `).join('')}
+                        <button class="law-option-card law-others-card" data-option="__others__">
+                            <span class="law-option-num">✎</span>
+                            <span class="law-option-label">Others (describe your situation)</span>
+                        </button>
+                    </div>
+                </div>
+            `;
+        }
 
-        // Add questions as cards
-        if (questions && questions.length > 0) {
-            const grid = document.createElement('div');
-            grid.className = 'question-cards';
+        wrap.innerHTML = `
+            <div class="law-msg-avatar">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                </svg>
+            </div>
+            <div class="law-msg-body">
+                ${bubbleContent ? `<div class="law-msg-bubble">${bubbleContent}</div>` : ''}
+                ${questionHTML}
+            </div>
+        `;
 
-            questions.forEach(q => {
-                const card = document.createElement('button');
-                card.className = 'q-card';
-                card.innerHTML = `
-                    <span>${escapeHTML(q)}</span>
-                    <svg class="q-card-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-                        <line x1="5" y1="12" x2="19" y2="12"></line>
-                        <polyline points="12 5 19 12 12 19"></polyline>
-                    </svg>
-                `;
+        chatScroll.appendChild(wrap);
 
-                // When clicked, append question to input or send directly
+        // Bind option clicks
+        const grid = wrap.querySelector('.law-options-grid');
+        if (grid) {
+            const cards = grid.querySelectorAll('.law-option-card');
+            cards.forEach(card => {
                 card.addEventListener('click', () => {
-                    const currentVal = inputArea.value.trim();
-                    if (currentVal) {
-                        inputArea.value = currentVal + '\n\nRegarding: ' + q + '\n';
-                    } else {
-                        inputArea.value = 'Regarding: ' + q + '\n';
-                    }
-                    inputArea.focus();
-                    inputArea.style.height = 'auto';
-                    inputArea.style.height = (inputArea.scrollHeight) + 'px';
-                });
+                    const optVal = card.getAttribute('data-option');
 
-                grid.appendChild(card);
+                    if (optVal === '__others__') {
+                        // Show text input for custom answer
+                        expandOthers(grid, cards);
+                    } else {
+                        // Mark selected, disable all, send
+                        cards.forEach(c => c.style.pointerEvents = 'none');
+                        card.classList.add('selected');
+                        handleSend(optVal);
+                    }
+                });
             });
-            wrap.appendChild(grid);
         }
 
-        chatWindow.appendChild(wrap);
-        scrollToBottom();
+        scrollBottom();
     }
 
-    function appendLoadingMessage() {
+    // ── Expand "Others" input ─────────────────────────────────────────────
+    function expandOthers(grid, allCards) {
+        // Disable all cards
+        allCards.forEach(c => {
+            if (!c.classList.contains('law-others-card')) {
+                c.style.opacity = '0.4';
+                c.style.pointerEvents = 'none';
+            }
+        });
+        // Mark "Others" as selected
+        const othersCard = grid.querySelector('.law-others-card');
+        othersCard.classList.add('selected');
+        othersCard.style.pointerEvents = 'none';
+
+        // Create expand row
+        const expandRow = el('div', 'law-others-expand');
+        expandRow.innerHTML = `
+            <input type="text" class="law-others-input" placeholder="Describe your specific situation..." autofocus>
+            <button class="law-others-send">Send</button>
+        `;
+        grid.appendChild(expandRow);
+
+        const inp = expandRow.querySelector('.law-others-input');
+        const sendOthers = expandRow.querySelector('.law-others-send');
+
+        inp.focus();
+        inp.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                submitOthers();
+            }
+        });
+        sendOthers.addEventListener('click', submitOthers);
+
+        function submitOthers() {
+            const val = inp.value.trim();
+            if (!val) return;
+            inp.disabled = true;
+            sendOthers.disabled = true;
+            handleSend(val);
+        }
+
+        scrollBottom();
+    }
+
+    // ── Render Final Cards ────────────────────────────────────────────────
+    function renderFinalCards(cards) {
+        const wrap = el('div', 'law-msg law-msg-ai');
+
+        const cardDefs = [
+            { key: 'issue_summary', emoji: '📋', label: 'Issue Summary', iconClass: 'summary' },
+            { key: 'legal_classification', emoji: '⚖️', label: 'Legal Classification', iconClass: 'classification' },
+            { key: 'applicable_laws', emoji: '📜', label: 'Applicable Laws & Sections', iconClass: 'laws' },
+            { key: 'risk_urgency', emoji: '🚨', label: 'Risk & Urgency', iconClass: 'risk' },
+            { key: 'official_resources', emoji: '🏛️', label: 'Official Resources & Help', iconClass: 'resources' },
+            { key: 'action_plan', emoji: '📝', label: 'Immediate Action Plan', iconClass: 'action' },
+            { key: 'required_documents', emoji: '📁', label: 'Required Documents', iconClass: 'documents' },
+            { key: 'preventive_advice', emoji: '🛡️', label: 'Preventive Advice', iconClass: 'preventive' },
+        ];
+
+        let cardsHTML = '';
+        for (const def of cardDefs) {
+            const value = cards[def.key];
+            if (!value || (typeof value === 'string' && !value.trim())) continue;
+
+            let bodyHTML = '';
+
+            if (def.key === 'risk_urgency' && typeof value === 'object') {
+                const level = (value.level || 'MEDIUM').toUpperCase();
+                const levelClass = level === 'HIGH' ? 'high' : level === 'LOW' ? 'low' : 'medium';
+                bodyHTML = `
+                    <div class="law-risk-badge ${levelClass}">
+                        <span class="law-risk-badge-dot"></span>
+                        ${level} URGENCY
+                    </div>
+                    <div>${parseMd(value.description || '')}</div>
+                `;
+            } else {
+                bodyHTML = parseMd(typeof value === 'string' ? value : JSON.stringify(value));
+            }
+
+            cardsHTML += `
+                <div class="law-result-card">
+                    <div class="law-card-header">
+                        <div class="law-card-icon ${def.iconClass}">${def.emoji}</div>
+                        <div class="law-card-title">${def.label}</div>
+                    </div>
+                    <div class="law-card-body">${bodyHTML}</div>
+                </div>
+            `;
+        }
+
+        wrap.innerHTML = `
+            <div class="law-msg-avatar">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                </svg>
+            </div>
+            <div class="law-msg-body">
+                <div class="law-msg-bubble">
+                    <h3>✅ Legal Analysis Complete</h3>
+                    <p>Based on the information you've provided, here is your comprehensive legal guidance:</p>
+                </div>
+                <div class="law-final-cards">
+                    ${cardsHTML}
+                </div>
+            </div>
+        `;
+
+        chatScroll.appendChild(wrap);
+        scrollBottom();
+    }
+
+    // ── Render Plain AI Message ───────────────────────────────────────────
+    function renderPlainAIMsg(text) {
+        const wrap = el('div', 'law-msg law-msg-ai');
+        wrap.innerHTML = `
+            <div class="law-msg-avatar">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                </svg>
+            </div>
+            <div class="law-msg-body">
+                <div class="law-msg-bubble">${parseMd(text)}</div>
+            </div>
+        `;
+        chatScroll.appendChild(wrap);
+        scrollBottom();
+    }
+
+    // ── Loading Message ───────────────────────────────────────────────────
+    function appendLoadingMsg() {
         const id = 'loader-' + Date.now();
-        const wrap = document.createElement('div');
-        wrap.className = 'message ai-message loading-message';
+        const wrap = el('div', 'law-msg law-msg-ai law-msg-loading');
         wrap.id = id;
         wrap.innerHTML = `
-            <div class="typing-dot"></div>
-            <div class="typing-dot"></div>
-            <div class="typing-dot"></div>
-            <span style="font-size: 0.8rem; margin-left: 8px;">Analyzing legal patterns...</span>
+            <div class="law-msg-avatar">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                </svg>
+            </div>
+            <div class="law-msg-body">
+                <div class="law-msg-bubble">
+                    <div class="law-typing-dots">
+                        <span class="law-typing-dot"></span>
+                        <span class="law-typing-dot"></span>
+                        <span class="law-typing-dot"></span>
+                    </div>
+                    <span class="law-loading-text">Analyzing legal patterns...</span>
+                </div>
+            </div>
         `;
-        chatWindow.appendChild(wrap);
-        scrollToBottom();
+        chatScroll.appendChild(wrap);
+        scrollBottom();
         return id;
     }
 
-    function removeLoadingMessage(id) {
-        const el = document.getElementById(id);
-        if (el) {
-            el.remove();
-        }
+    function removeLoadingMsg(id) {
+        const loader = document.getElementById(id);
+        if (loader) loader.remove();
     }
 
-    function scrollToBottom() {
-        chatWindow.scrollTop = chatWindow.scrollHeight;
+    // ── Utilities ─────────────────────────────────────────────────────────
+    function scrollBottom() {
+        requestAnimationFrame(() => {
+            chatScroll.scrollTop = chatScroll.scrollHeight;
+        });
+    }
+
+    function el(tag, className) {
+        const e = document.createElement(tag);
+        if (className) e.className = className;
+        return e;
     }
 
     function escapeHTML(str) {
@@ -212,19 +396,29 @@ document.addEventListener('DOMContentLoaded', () => {
         );
     }
 
+    function escapeAttr(str) {
+        return str.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    function parseMd(text) {
+        if (typeof marked !== 'undefined') {
+            return marked.parse(text);
+        }
+        return `<p>${escapeHTML(text).replace(/\n/g, '<br>')}</p>`;
+    }
+
     function showToast(message, type = 'info') {
         const container = document.getElementById('toast-container');
         if (!container) return;
 
         const toast = document.createElement('div');
-        toast.className = 'toast';
-        toast.style.borderColor = type === 'error' ? 'var(--accent)' : 'var(--border-light)';
+        toast.className = `toast ${type}`;
         toast.textContent = message;
-
         container.appendChild(toast);
 
         setTimeout(() => {
             toast.style.opacity = '0';
+            toast.style.transition = 'opacity 0.3s';
             setTimeout(() => toast.remove(), 300);
         }, 3000);
     }

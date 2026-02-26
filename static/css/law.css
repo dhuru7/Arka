@@ -1,166 +1,681 @@
 /* ═══════════════════════════════════════════════════════════════════════════
-   Arka – Legal AI Assistant CSS
-   Extension of style.css
+   Arka – Legal AI Assistant — Complete Standalone CSS
+   Premium chat-based legal assistant with card interactions
    ═══════════════════════════════════════════════════════════════════════════ */
 
-.main-area {
+/* ── CSS Custom Properties ──────────────────────────────────────────────── */
+:root {
+    --law-bg: #050508;
+    --law-bg-card: #0d0d12;
+    --law-bg-elevated: #13131a;
+    --law-fg: #e8e8ed;
+    --law-fg-muted: #6e6e7a;
+    --law-fg-dim: #3a3a45;
+    --law-border: #1a1a24;
+    --law-border-light: #2a2a38;
+    --law-accent: #E52E2E;
+    --law-accent-glow: rgba(229, 46, 46, 0.25);
+    --law-accent-soft: rgba(229, 46, 46, 0.08);
+    --law-success: #22c55e;
+    --law-warning: #f59e0b;
+    --law-danger: #ef4444;
+    --law-info: #3b82f6;
+
+    --law-font-body: 'Inter', 'Space Grotesk', system-ui, sans-serif;
+    --law-font-logo: 'Orbitron', sans-serif;
+    --law-font-mono: 'Space Mono', 'Fira Code', monospace;
+
+    --law-radius-sm: 8px;
+    --law-radius-md: 14px;
+    --law-radius-lg: 20px;
+    --law-radius-xl: 28px;
+    --law-radius-pill: 9999px;
+
+    --law-shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
+    --law-shadow-md: 0 8px 24px rgba(0, 0, 0, 0.4);
+    --law-shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.5);
+    --law-shadow-glow: 0 0 30px var(--law-accent-glow);
+
+    --law-transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+    --law-transition-base: 250ms cubic-bezier(0.4, 0, 0.2, 1);
+    --law-transition-smooth: 400ms cubic-bezier(0.16, 1, 0.3, 1);
+
+    --law-header-h: 64px;
+    --law-input-h: 80px;
+    --law-max-chat-w: 820px;
+}
+
+/* ── Resets ──────────────────────────────────────────────────────────────── */
+*,
+*::before,
+*::after {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+html {
+    font-size: 16px;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+    font-family: var(--law-font-body);
+    background: var(--law-bg);
+    color: var(--law-fg);
+    overflow: hidden;
+    height: 100vh;
+    width: 100vw;
+}
+
+/* ── Scrollbar ──────────────────────────────────────────────────────────── */
+::-webkit-scrollbar {
+    width: 5px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--law-border-light);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--law-fg-muted);
+}
+
+/* ── Background ─────────────────────────────────────────────────────────── */
+.law-bg-grid {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background-image: radial-gradient(var(--law-border) 1px, transparent 1px);
+    background-size: 32px 32px;
+    opacity: 0.4;
+    pointer-events: none;
+    z-index: 0;
+}
+
+.law-bg-glow {
+    position: fixed;
+    border-radius: 50%;
+    filter: blur(120px);
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0.15;
+}
+
+.law-bg-glow-1 {
+    width: 500px;
+    height: 500px;
+    background: var(--law-accent);
+    top: -100px;
+    right: -100px;
+    animation: law-glow-drift 20s ease-in-out infinite alternate;
+}
+
+.law-bg-glow-2 {
+    width: 400px;
+    height: 400px;
+    background: #6366f1;
+    bottom: -100px;
+    left: -100px;
+    animation: law-glow-drift 25s ease-in-out infinite alternate-reverse;
+}
+
+@keyframes law-glow-drift {
+    0% {
+        transform: translate(0, 0) scale(1);
+    }
+
+    50% {
+        transform: translate(30px, -20px) scale(1.1);
+    }
+
+    100% {
+        transform: translate(-20px, 30px) scale(0.9);
+    }
+}
+
+/* ── Main App Shell ─────────────────────────────────────────────────────── */
+.law-app {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    width: 100vw;
     position: relative;
-    height: 100%;
+    z-index: 1;
 }
 
-/* ── Chat Window ────────────────────────────────────────────────────────── */
-.chat-window {
-    flex: 1;
-    overflow-y: auto;
-    padding-bottom: 24px;
-    display: flex;
-    flex-direction: column;
-    gap: 20px;
-    /* Custom scrollbar matching style.css */
-    padding-right: 8px;
-}
-
-/* Message Styles */
-.message {
-    max-width: 85%;
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-}
-
-.user-message {
-    align-self: flex-end;
-    background: rgba(255, 255, 255, 0.1);
-    border: 1px solid var(--border-light);
-    border-radius: var(--radius-md);
-    border-bottom-right-radius: 4px;
-    padding: 16px;
-    backdrop-filter: blur(10px);
-}
-
-.ai-message {
-    align-self: flex-start;
-    background: rgba(0, 0, 0, 0.6);
-    border: 1px solid var(--border-light);
-    border-radius: var(--radius-md);
-    border-bottom-left-radius: 4px;
-    padding: 16px;
-    backdrop-filter: blur(10px);
-    border-left: 3px solid var(--accent);
-}
-
-.message-content {
-    font-size: 0.95rem;
-    line-height: 1.6;
-    color: var(--fg);
-}
-
-.message-content p {
-    margin-bottom: 12px;
-}
-
-.message-content h1,
-.message-content h2,
-.message-content h3 {
-    margin-top: 16px;
-    margin-bottom: 8px;
-    font-weight: 600;
-    color: var(--fg);
-}
-
-.message-content strong {
-    color: #fff;
-}
-
-.message-content a {
-    color: var(--accent);
-    text-decoration: underline;
-    text-underline-offset: 4px;
-}
-
-.message-content a:hover {
-    color: var(--accent-hover);
-}
-
-.message-content ul,
-.message-content ol {
-    margin-left: 20px;
-    margin-bottom: 12px;
-}
-
-.message-content li {
-    margin-bottom: 6px;
-}
-
-/* ── Question Cards (AI Generated) ──────────────────────────────────────── */
-.question-cards {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 12px;
-    margin-top: 16px;
-}
-
-.q-card {
-    background: rgba(0, 0, 0, 0.4);
-    border: 1px solid var(--border-light);
-    border-radius: var(--radius-sm);
-    padding: 16px;
-    font-size: 0.85rem;
-    color: var(--fg);
-    cursor: pointer;
-    transition: all var(--transition-fast);
+/* ── Header ─────────────────────────────────────────────────────────────── */
+.law-header {
+    height: var(--law-header-h);
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 8px;
-    text-align: left;
-}
-
-.q-card:hover {
-    background: rgba(255, 255, 255, 0.05);
-    border-color: var(--accent);
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(229, 46, 46, 0.2);
-}
-
-.q-card-icon {
+    padding: 0 24px;
+    border-bottom: 1px solid var(--law-border);
+    background: rgba(5, 5, 8, 0.85);
+    backdrop-filter: blur(20px);
     flex-shrink: 0;
-    color: var(--accent);
+    z-index: 10;
 }
 
-/* ── Loading Animation ──────────────────────────────────────────────────── */
-.loading-message {
+.law-header-logo {
     display: flex;
-    gap: 8px;
     align-items: center;
-    padding: 16px;
-    font-family: var(--font-mono);
-    color: var(--fg-muted);
+    gap: 12px;
+    text-decoration: none;
+    color: var(--law-fg);
 }
 
-.typing-dot {
-    width: 6px;
-    height: 6px;
-    background: var(--fg-muted);
+.law-logo-mark {
+    width: 36px;
+    height: 36px;
+    background: var(--law-fg);
+    color: var(--law-bg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--law-font-logo);
+    font-weight: 700;
+    font-size: 1.1rem;
+    border-radius: var(--law-radius-sm);
+}
+
+.law-logo-title {
+    font-family: var(--law-font-logo);
+    font-weight: 700;
+    font-size: 1.3rem;
+    letter-spacing: 3px;
+    display: block;
+    line-height: 1;
+}
+
+.law-logo-sub {
+    font-size: 0.6rem;
+    letter-spacing: 3px;
+    color: var(--law-accent);
+    text-transform: uppercase;
+    display: block;
+    margin-top: 2px;
+}
+
+.law-header-center {
+    display: flex;
+    align-items: center;
+}
+
+.law-status-indicator {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.75rem;
+    color: var(--law-fg-muted);
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    font-family: var(--law-font-mono);
+}
+
+.law-status-dot {
+    width: 8px;
+    height: 8px;
     border-radius: 50%;
-    animation: typing 1.4s infinite ease-in-out both;
+    background: var(--law-success);
+    box-shadow: 0 0 8px rgba(34, 197, 94, 0.5);
+    animation: law-pulse 2s ease-in-out infinite;
 }
 
-.typing-dot:nth-child(1) {
+@keyframes law-pulse {
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.4;
+    }
+}
+
+.law-new-chat-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    background: transparent;
+    color: var(--law-fg-muted);
+    border: 1px solid var(--law-border-light);
+    border-radius: var(--law-radius-pill);
+    font-family: var(--law-font-body);
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: all var(--law-transition-fast);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.law-new-chat-btn:hover {
+    color: var(--law-fg);
+    border-color: var(--law-fg);
+    background: rgba(255, 255, 255, 0.05);
+}
+
+/* ── Chat Area ──────────────────────────────────────────────────────────── */
+.law-chat-area {
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+}
+
+.law-chat-scroll {
+    height: 100%;
+    overflow-y: auto;
+    padding: 32px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+/* ── Welcome Screen ─────────────────────────────────────────────────────── */
+.law-welcome {
+    max-width: var(--law-max-chat-w);
+    width: 100%;
+    margin: auto;
+    text-align: center;
+    animation: law-fade-up 0.6s var(--law-transition-smooth) both;
+}
+
+.law-welcome-icon {
+    width: 80px;
+    height: 80px;
+    margin: 0 auto 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: var(--law-accent-soft);
+    border: 1px solid rgba(229, 46, 46, 0.2);
+    color: var(--law-accent);
+}
+
+.law-welcome h1 {
+    font-family: var(--law-font-body);
+    font-size: 2rem;
+    font-weight: 600;
+    letter-spacing: -0.5px;
+    margin-bottom: 12px;
+    background: linear-gradient(135deg, var(--law-fg) 0%, var(--law-fg-muted) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.law-welcome p {
+    font-size: 0.95rem;
+    color: var(--law-fg-muted);
+    max-width: 520px;
+    margin: 0 auto 32px;
+    line-height: 1.7;
+}
+
+.law-welcome-chips {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 10px;
+    max-width: 600px;
+    margin: 0 auto;
+}
+
+.law-chip {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 18px;
+    background: var(--law-bg-elevated);
+    border: 1px solid var(--law-border-light);
+    border-radius: var(--law-radius-pill);
+    color: var(--law-fg-muted);
+    font-family: var(--law-font-body);
+    font-size: 0.82rem;
+    cursor: pointer;
+    transition: all var(--law-transition-base);
+    text-transform: none;
+    letter-spacing: 0;
+}
+
+.law-chip:hover {
+    background: var(--law-accent-soft);
+    border-color: var(--law-accent);
+    color: var(--law-fg);
+    transform: translateY(-2px);
+    box-shadow: var(--law-shadow-glow);
+}
+
+/* ── Message Bubbles ────────────────────────────────────────────────────── */
+.law-msg {
+    max-width: var(--law-max-chat-w);
+    width: 100%;
+    margin: 0 auto;
+    display: flex;
+    gap: 14px;
+    animation: law-fade-up 0.35s var(--law-transition-smooth) both;
+}
+
+.law-msg-user {
+    flex-direction: row-reverse;
+}
+
+.law-msg-avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    font-size: 0.75rem;
+    font-weight: 600;
+    margin-top: 4px;
+}
+
+.law-msg-ai .law-msg-avatar {
+    background: var(--law-accent-soft);
+    border: 1px solid rgba(229, 46, 46, 0.2);
+    color: var(--law-accent);
+}
+
+.law-msg-user .law-msg-avatar {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid var(--law-border-light);
+    color: var(--law-fg-muted);
+}
+
+.law-msg-body {
+    flex: 1;
+    min-width: 0;
+}
+
+.law-msg-bubble {
+    padding: 16px 20px;
+    border-radius: var(--law-radius-lg);
+    font-size: 0.92rem;
+    line-height: 1.7;
+    word-wrap: break-word;
+}
+
+.law-msg-ai .law-msg-bubble {
+    background: var(--law-bg-card);
+    border: 1px solid var(--law-border);
+    border-bottom-left-radius: 6px;
+}
+
+.law-msg-user .law-msg-bubble {
+    background: rgba(229, 46, 46, 0.12);
+    border: 1px solid rgba(229, 46, 46, 0.2);
+    border-bottom-right-radius: 6px;
+    color: var(--law-fg);
+}
+
+.law-msg-bubble p {
+    margin-bottom: 8px;
+}
+
+.law-msg-bubble p:last-child {
+    margin-bottom: 0;
+}
+
+.law-msg-bubble strong {
+    color: #fff;
+}
+
+.law-msg-bubble a {
+    color: var(--law-accent);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+
+.law-msg-bubble a:hover {
+    color: #ff5555;
+}
+
+.law-msg-bubble ul,
+.law-msg-bubble ol {
+    margin-left: 20px;
+    margin-bottom: 8px;
+}
+
+.law-msg-bubble li {
+    margin-bottom: 4px;
+}
+
+.law-msg-bubble h3 {
+    font-size: 1rem;
+    margin-bottom: 8px;
+    font-weight: 600;
+}
+
+/* ── Question Section ───────────────────────────────────────────────────── */
+.law-question-section {
+    margin-top: 16px;
+}
+
+.law-question-label {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: var(--law-fg-muted);
+    margin-bottom: 12px;
+    font-family: var(--law-font-mono);
+}
+
+.law-question-text {
+    font-size: 0.95rem;
+    font-weight: 500;
+    color: var(--law-fg);
+    margin-bottom: 16px;
+    line-height: 1.5;
+}
+
+/* ── Option Cards (Clickable) ───────────────────────────────────────────── */
+.law-options-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 10px;
+}
+
+.law-option-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 18px;
+    background: var(--law-bg-elevated);
+    border: 1px solid var(--law-border-light);
+    border-radius: var(--law-radius-md);
+    color: var(--law-fg-muted);
+    font-family: var(--law-font-body);
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: all var(--law-transition-base);
+    text-align: left;
+    text-transform: none;
+    letter-spacing: 0;
+    line-height: 1.4;
+    position: relative;
+    overflow: hidden;
+}
+
+.law-option-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(135deg, var(--law-accent-soft), transparent);
+    opacity: 0;
+    transition: opacity var(--law-transition-base);
+}
+
+.law-option-card:hover {
+    border-color: var(--law-accent);
+    color: var(--law-fg);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 20px var(--law-accent-glow);
+}
+
+.law-option-card:hover::before {
+    opacity: 1;
+}
+
+.law-option-card.selected {
+    border-color: var(--law-accent);
+    background: rgba(229, 46, 46, 0.1);
+    color: var(--law-fg);
+    pointer-events: none;
+}
+
+.law-option-num {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--law-border-light);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.72rem;
+    font-weight: 600;
+    flex-shrink: 0;
+    color: var(--law-fg-dim);
+    position: relative;
+    z-index: 1;
+    transition: all var(--law-transition-fast);
+}
+
+.law-option-card:hover .law-option-num {
+    background: var(--law-accent);
+    border-color: var(--law-accent);
+    color: #fff;
+}
+
+.law-option-card.selected .law-option-num {
+    background: var(--law-accent);
+    border-color: var(--law-accent);
+    color: #fff;
+}
+
+.law-option-label {
+    flex: 1;
+    position: relative;
+    z-index: 1;
+}
+
+/* "Others" card */
+.law-option-card.law-others-card {
+    border-style: dashed;
+}
+
+.law-option-card.law-others-card .law-option-num {
+    background: transparent;
+    border-color: var(--law-fg-dim);
+}
+
+/* Others input expanded */
+.law-others-expand {
+    grid-column: 1 / -1;
+    display: flex;
+    gap: 10px;
+    animation: law-fade-up 0.25s ease both;
+}
+
+.law-others-input {
+    flex: 1;
+    background: var(--law-bg-elevated);
+    border: 1px solid var(--law-border-light);
+    color: var(--law-fg);
+    padding: 12px 16px;
+    border-radius: var(--law-radius-md);
+    font-family: var(--law-font-body);
+    font-size: 0.88rem;
+    outline: none;
+    resize: none;
+    min-height: 44px;
+    transition: border-color var(--law-transition-fast);
+}
+
+.law-others-input:focus {
+    border-color: var(--law-accent);
+}
+
+.law-others-input::placeholder {
+    color: var(--law-fg-dim);
+}
+
+.law-others-send {
+    padding: 10px 20px;
+    background: var(--law-accent);
+    color: #fff;
+    border: none;
+    border-radius: var(--law-radius-md);
+    font-family: var(--law-font-body);
+    font-size: 0.82rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all var(--law-transition-fast);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    white-space: nowrap;
+    align-self: flex-end;
+}
+
+.law-others-send:hover {
+    background: #ff4444;
+    transform: translateY(-1px);
+}
+
+/* ── Loading Indicator ──────────────────────────────────────────────────── */
+.law-msg-loading .law-msg-bubble {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 20px 24px;
+}
+
+.law-typing-dots {
+    display: flex;
+    gap: 5px;
+}
+
+.law-typing-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--law-fg-muted);
+    animation: law-typing 1.4s ease-in-out infinite both;
+}
+
+.law-typing-dot:nth-child(1) {
     animation-delay: -0.32s;
 }
 
-.typing-dot:nth-child(2) {
+.law-typing-dot:nth-child(2) {
     animation-delay: -0.16s;
 }
 
-@keyframes typing {
+@keyframes law-typing {
 
     0%,
     80%,
     100% {
-        transform: scale(0);
-        opacity: 0.5;
+        transform: scale(0.4);
+        opacity: 0.4;
     }
 
     40% {
@@ -169,32 +684,475 @@
     }
 }
 
-/* ── Chat Input Area ────────────────────────────────────────────────────── */
-.chat-input-area {
-    margin-top: auto;
-    background: rgba(0, 0, 0, 0.8);
-    backdrop-filter: blur(20px);
-    padding: 16px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
+.law-loading-text {
+    font-size: 0.78rem;
+    color: var(--law-fg-dim);
+    font-family: var(--law-font-mono);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   FINAL RESPONSE CARDS
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.law-final-cards {
+    margin-top: 20px;
     display: flex;
     flex-direction: column;
+    gap: 14px;
 }
 
-.law-input {
-    margin-bottom: 0 !important;
-    height: auto !important;
-    min-height: 60px;
-    max-height: 200px;
+.law-result-card {
+    background: var(--law-bg-elevated);
+    border: 1px solid var(--law-border);
+    border-radius: var(--law-radius-md);
+    overflow: hidden;
+    animation: law-card-in 0.4s var(--law-transition-smooth) both;
+    transition: all var(--law-transition-base);
 }
 
-.chat-send-btn {
-    width: 60px;
-    height: 100%;
-    border-radius: var(--radius-md) !important;
+.law-result-card:hover {
+    border-color: var(--law-border-light);
+    box-shadow: var(--law-shadow-md);
 }
 
-.chat-send-btn .spinner {
+.law-result-card:nth-child(1) {
+    animation-delay: 0.05s;
+}
+
+.law-result-card:nth-child(2) {
+    animation-delay: 0.1s;
+}
+
+.law-result-card:nth-child(3) {
+    animation-delay: 0.15s;
+}
+
+.law-result-card:nth-child(4) {
+    animation-delay: 0.2s;
+}
+
+.law-result-card:nth-child(5) {
+    animation-delay: 0.25s;
+}
+
+.law-result-card:nth-child(6) {
+    animation-delay: 0.3s;
+}
+
+.law-result-card:nth-child(7) {
+    animation-delay: 0.35s;
+}
+
+.law-result-card:nth-child(8) {
+    animation-delay: 0.4s;
+}
+
+@keyframes law-card-in {
+    from {
+        opacity: 0;
+        transform: translateY(16px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.law-card-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--law-border);
+    background: rgba(255, 255, 255, 0.015);
+}
+
+.law-card-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: var(--law-radius-sm);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
+    flex-shrink: 0;
+}
+
+.law-card-icon.summary {
+    background: rgba(99, 102, 241, 0.15);
+    color: #818cf8;
+}
+
+.law-card-icon.classification {
+    background: rgba(168, 85, 247, 0.15);
+    color: #c084fc;
+}
+
+.law-card-icon.laws {
+    background: rgba(59, 130, 246, 0.15);
+    color: #60a5fa;
+}
+
+.law-card-icon.risk {
+    background: rgba(239, 68, 68, 0.15);
+    color: #f87171;
+}
+
+.law-card-icon.resources {
+    background: rgba(34, 197, 94, 0.15);
+    color: #4ade80;
+}
+
+.law-card-icon.action {
+    background: rgba(245, 158, 11, 0.15);
+    color: #fbbf24;
+}
+
+.law-card-icon.documents {
+    background: rgba(14, 165, 233, 0.15);
+    color: #38bdf8;
+}
+
+.law-card-icon.preventive {
+    background: rgba(139, 92, 246, 0.15);
+    color: #a78bfa;
+}
+
+.law-card-title {
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--law-fg-muted);
+    font-weight: 600;
+}
+
+.law-card-body {
+    padding: 18px 20px;
+    font-size: 0.9rem;
+    line-height: 1.75;
+    color: var(--law-fg);
+}
+
+.law-card-body p {
+    margin-bottom: 8px;
+}
+
+.law-card-body p:last-child {
+    margin-bottom: 0;
+}
+
+.law-card-body ul,
+.law-card-body ol {
+    margin-left: 20px;
+    margin-bottom: 8px;
+}
+
+.law-card-body li {
+    margin-bottom: 4px;
+}
+
+.law-card-body a {
+    color: var(--law-accent);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+
+.law-card-body strong {
+    color: #fff;
+}
+
+/* Risk badge */
+.law-risk-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 14px;
+    border-radius: var(--law-radius-pill);
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin-bottom: 12px;
+    font-family: var(--law-font-mono);
+}
+
+.law-risk-badge.high {
+    background: rgba(239, 68, 68, 0.15);
+    color: #f87171;
+    border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.law-risk-badge.medium {
+    background: rgba(245, 158, 11, 0.15);
+    color: #fbbf24;
+    border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.law-risk-badge.low {
+    background: rgba(34, 197, 94, 0.15);
+    color: #4ade80;
+    border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+.law-risk-badge-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+    animation: law-pulse 1.5s ease-in-out infinite;
+}
+
+/* ── Chat Input Bar ─────────────────────────────────────────────────────── */
+.law-chat-input-bar {
+    flex-shrink: 0;
+    padding: 12px 24px 16px;
+    background: rgba(5, 5, 8, 0.9);
+    backdrop-filter: blur(20px);
+    border-top: 1px solid var(--law-border);
+    z-index: 10;
+}
+
+.law-input-container {
+    max-width: var(--law-max-chat-w);
+    margin: 0 auto;
+    display: flex;
+    align-items: flex-end;
+    gap: 12px;
+    background: var(--law-bg-card);
+    border: 1px solid var(--law-border-light);
+    border-radius: var(--law-radius-lg);
+    padding: 6px 6px 6px 20px;
+    transition: border-color var(--law-transition-fast);
+}
+
+.law-input-container:focus-within {
+    border-color: var(--law-accent);
+    box-shadow: 0 0 0 3px var(--law-accent-glow);
+}
+
+.law-chat-textarea {
+    flex: 1;
+    background: transparent;
+    border: none;
+    color: var(--law-fg);
+    padding: 12px 0;
+    font-family: var(--law-font-body);
+    font-size: 0.92rem;
+    resize: none;
+    outline: none;
+    max-height: 150px;
+    line-height: 1.5;
+}
+
+.law-chat-textarea::placeholder {
+    color: var(--law-fg-dim);
+}
+
+.law-send-btn {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: var(--law-accent);
+    color: #fff;
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all var(--law-transition-fast);
+    flex-shrink: 0;
+    padding: 0;
+}
+
+.law-send-btn:hover {
+    background: #ff4444;
+    transform: scale(1.05);
+    color: #fff;
+}
+
+.law-send-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.law-send-spinner {
     width: 20px;
     height: 20px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-radius: 50%;
+    border-top-color: #fff;
+    animation: law-spin 0.8s linear infinite;
+    display: none;
+}
+
+.law-send-btn.loading .law-send-spinner {
+    display: block;
+}
+
+.law-send-btn.loading .law-send-icon {
+    display: none;
+}
+
+@keyframes law-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.law-input-hint {
+    max-width: var(--law-max-chat-w);
+    margin: 6px auto 0;
+    text-align: center;
+    font-size: 0.68rem;
+    color: var(--law-fg-dim);
+    font-family: var(--law-font-mono);
+}
+
+.law-input-hint kbd {
+    padding: 1px 6px;
+    background: var(--law-bg-elevated);
+    border: 1px solid var(--law-border-light);
+    border-radius: 4px;
+    font-size: 0.65rem;
+    font-family: var(--law-font-mono);
+}
+
+/* ── Toast Notifications ────────────────────────────────────────────────── */
+.toast-container {
+    position: fixed;
+    bottom: 100px;
+    right: 24px;
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.toast {
+    padding: 12px 20px;
+    background: var(--law-bg-card);
+    border: 1px solid var(--law-border-light);
+    border-radius: var(--law-radius-pill);
+    color: var(--law-fg);
+    font-family: var(--law-font-mono);
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    box-shadow: var(--law-shadow-md);
+    animation: law-fade-up 0.3s ease-out;
+}
+
+.toast.error {
+    border-color: var(--law-danger);
+}
+
+.toast.success {
+    border-color: var(--law-success);
+}
+
+/* ── Animations ─────────────────────────────────────────────────────────── */
+@keyframes law-fade-up {
+    from {
+        opacity: 0;
+        transform: translateY(16px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* ── Responsive ─────────────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+    .law-header {
+        padding: 0 16px;
+    }
+
+    .law-logo-text {
+        display: none;
+    }
+
+    .law-new-chat-btn span {
+        display: none;
+    }
+
+    .law-new-chat-btn {
+        padding: 8px;
+        border-radius: 50%;
+    }
+
+    .law-chat-scroll {
+        padding: 20px 12px;
+    }
+
+    .law-welcome h1 {
+        font-size: 1.5rem;
+    }
+
+    .law-welcome p {
+        font-size: 0.88rem;
+    }
+
+    .law-welcome-chips {
+        gap: 8px;
+    }
+
+    .law-chip {
+        font-size: 0.78rem;
+        padding: 8px 14px;
+    }
+
+    .law-options-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .law-chat-input-bar {
+        padding: 8px 12px 12px;
+    }
+
+    .law-input-container {
+        padding: 4px 4px 4px 16px;
+    }
+
+    .law-msg {
+        gap: 10px;
+    }
+
+    .law-msg-avatar {
+        width: 30px;
+        height: 30px;
+        font-size: 0.65rem;
+    }
+
+    .law-card-header {
+        padding: 12px 16px;
+    }
+
+    .law-card-body {
+        padding: 14px 16px;
+        font-size: 0.85rem;
+    }
+
+    .law-input-hint {
+        display: none;
+    }
+}
+
+@media (max-width: 480px) {
+    .law-header-center {
+        display: none;
+    }
+
+    .law-welcome-chips {
+        flex-direction: column;
+    }
+
+    .law-chip {
+        width: 100%;
+        justify-content: center;
+    }
 }
