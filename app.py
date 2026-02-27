@@ -322,7 +322,9 @@ def law_chat():
             'max_tokens': 2048
         }
 
-        response = requests.post(SARVAM_API_URL, headers=headers, json=payload, timeout=60)
+        print(f"[LawBot] Sending request to Sarvam API...")
+        response = requests.post(SARVAM_API_URL, headers=headers, json=payload, timeout=90)
+        print(f"[LawBot] Sarvam API responded with status: {response.status_code}")
 
         if response.status_code != 200:
             error_detail = response.text
@@ -335,31 +337,88 @@ def law_chat():
         result = response.json()
         law_response = result['choices'][0]['message']['content'].strip()
 
-        # Clean up markdown fencing
-        if law_response.startswith('```'):
-            lines = law_response.split('\n')
-            lines = [l for l in lines if not l.strip().startswith('```')]
-            law_response = '\n'.join(lines).strip()
+        # ── Robust JSON extraction ───────────────────────────────────────
+        import re
 
-        # Try to parse the JSON
+        # Step 1: Remove BOM and invisible characters
+        law_response = law_response.lstrip('\ufeff\u200b\u200c\u200d')
+
+        # Step 2: Strip ALL markdown code fences (```json ... ``` or ``` ... ```)
+        law_response = re.sub(r'```(?:json|JSON)?\s*\n?', '', law_response).strip()
+
+        # Step 3: Try direct JSON parse
+        parsed = None
         try:
-             parsed = json.loads(law_response)
+            parsed = json.loads(law_response)
+            print(f"[LawBot] Direct JSON parse succeeded")
         except json.JSONDecodeError:
-             # Fallback if AI didn't return proper JSON
-             parsed = {
-                 "message": law_response,
-                 "questions": []
-             }
+            print(f"[LawBot] Direct parse failed, trying extraction...")
 
+        # Step 4: If direct parse failed, extract the first complete JSON object
+        if parsed is None:
+            # Find the first '{' and match it to its closing '}'
+            first_brace = law_response.find('{')
+            if first_brace != -1:
+                depth = 0
+                in_string = False
+                escape_next = False
+                end_pos = -1
+                for i in range(first_brace, len(law_response)):
+                    c = law_response[i]
+                    if escape_next:
+                        escape_next = False
+                        continue
+                    if c == '\\' and in_string:
+                        escape_next = True
+                        continue
+                    if c == '"' and not escape_next:
+                        in_string = not in_string
+                        continue
+                    if not in_string:
+                        if c == '{':
+                            depth += 1
+                        elif c == '}':
+                            depth -= 1
+                            if depth == 0:
+                                end_pos = i
+                                break
+                if end_pos != -1:
+                    json_str = law_response[first_brace:end_pos + 1]
+                    try:
+                        parsed = json.loads(json_str)
+                        print(f"[LawBot] Extracted JSON from position {first_brace}-{end_pos}")
+                    except json.JSONDecodeError:
+                        print(f"[LawBot] Extracted JSON also failed to parse")
+
+        # Step 5: Final fallback — wrap as plain message
+        if parsed is None:
+            print(f"[LawBot] All JSON parsing failed, using fallback")
+            parsed = {
+                "phase": "questioning",
+                "message": law_response,
+                "question": "",
+                "options": []
+            }
+
+        print(f"[LawBot] Successfully processed response (phase: {parsed.get('phase', 'unknown')})")
         return jsonify({
             'success': True,
             'response': parsed
         })
 
+    except requests.exceptions.Timeout:
+        print("[LawBot] ERROR: Sarvam API timed out after 90s")
+        return jsonify({'error': 'The AI service timed out. Please try again.'}), 504
+    except requests.exceptions.ConnectionError as e:
+        print(f"[LawBot] ERROR: Could not connect to Sarvam API: {str(e)}")
+        return jsonify({'error': 'Could not connect to the AI service. Please try again.'}), 503
+    except requests.exceptions.SSLError as e:
+        print(f"[LawBot] ERROR: SSL error connecting to Sarvam API: {str(e)}")
+        return jsonify({'error': 'SSL connection error. Please try again.'}), 503
     except Exception as e:
-        print(f"Law connect error: {str(e)}")
+        print(f"[LawBot] ERROR: {type(e).__name__}: {str(e)}")
         return jsonify({'error': f'Server error: {str(e)}'}), 500
 
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    app.run(debug=True, port=5000, threaded=True)

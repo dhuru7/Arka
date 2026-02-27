@@ -55,6 +55,75 @@ document.addEventListener('DOMContentLoaded', () => {
         inputArea.focus();
     });
 
+    // ── Build API URL (always use current origin) ──────────────────────────
+    function getApiUrl(path) {
+        // Use the current page origin to build absolute URL
+        const base = window.location.origin;
+        return base + path;
+    }
+
+    // ── Fetch with retry (handles empty responses and JSON parse errors) ──
+    async function fetchWithRetry(url, options, maxRetries = 3) {
+        let lastError;
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                console.log(`[LawBot] API attempt ${attempt}/${maxRetries} → ${url}`);
+
+                // Add a 120-second timeout via AbortController
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 120000);
+                const fetchOptions = { ...options, signal: controller.signal };
+
+                const response = await fetch(url, fetchOptions);
+                clearTimeout(timeoutId);
+
+                console.log(`[LawBot] Response status: ${response.status}`);
+
+                // Read body as text first to avoid JSON parse error on empty body
+                const responseText = await response.text();
+                console.log(`[LawBot] Response body length: ${responseText.length}`);
+
+                if (!responseText || responseText.trim() === '') {
+                    console.warn(`[LawBot] Empty response body on attempt ${attempt}`);
+                    if (attempt < maxRetries) {
+                        await new Promise(r => setTimeout(r, 2000));
+                        continue;
+                    }
+                    throw new Error('Server returned an empty response. Please try again.');
+                }
+
+                // Safely parse JSON
+                let data;
+                try {
+                    data = JSON.parse(responseText);
+                } catch (parseErr) {
+                    console.warn(`[LawBot] JSON parse error on attempt ${attempt}:`, parseErr.message);
+                    console.warn(`[LawBot] Raw response (first 500 chars):`, responseText.substring(0, 500));
+                    if (attempt < maxRetries) {
+                        await new Promise(r => setTimeout(r, 2000));
+                        continue;
+                    }
+                    throw new Error('Server returned an invalid response. Please try again.');
+                }
+
+                return data;
+
+            } catch (err) {
+                lastError = err;
+                if (err.name === 'AbortError') {
+                    console.warn(`[LawBot] Request timed out on attempt ${attempt}`);
+                    lastError = new Error('Request timed out after 120 seconds. Please try again.');
+                } else {
+                    console.warn(`[LawBot] Attempt ${attempt} failed:`, err.message);
+                }
+                if (attempt < maxRetries) {
+                    await new Promise(r => setTimeout(r, 2000));
+                }
+            }
+        }
+        throw lastError;
+    }
+
     // ── Handle Send ───────────────────────────────────────────────────────
     async function handleSend(optionText) {
         const text = optionText || inputArea.value.trim();
@@ -81,7 +150,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const loaderId = appendLoadingMsg();
 
         try {
-            const response = await fetch('/api/law-chat', {
+            const apiUrl = getApiUrl('/api/law-chat');
+            // fetchWithRetry now returns parsed JSON data directly
+            const data = await fetchWithRetry(apiUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -90,11 +161,34 @@ document.addEventListener('DOMContentLoaded', () => {
                 })
             });
 
-            const data = await response.json();
             removeLoadingMsg(loaderId);
 
             if (data.success) {
-                const parsed = data.response;
+                let parsed = data.response;
+
+                // Safety net: if parsed has no phase but message looks like JSON, try re-parsing
+                if (!parsed.phase && parsed.message && parsed.message.trim().startsWith('{')) {
+                    try {
+                        const reParsed = JSON.parse(parsed.message);
+                        if (reParsed.phase) {
+                            console.log('[LawBot] Re-parsed JSON from message field');
+                            parsed = reParsed;
+                        }
+                    } catch (e) {
+                        // Also try extracting JSON from within the text
+                        const jsonMatch = parsed.message.match(/\{[\s\S]*"phase"\s*:\s*"(final|questioning)"[\s\S]*\}/);
+                        if (jsonMatch) {
+                            try {
+                                const extracted = JSON.parse(jsonMatch[0]);
+                                if (extracted.phase) {
+                                    console.log('[LawBot] Extracted JSON from message text');
+                                    parsed = extracted;
+                                }
+                            } catch (e2) { /* ignore */ }
+                        }
+                    }
+                }
+
                 chatHistory.push({ role: 'assistant', content: JSON.stringify(parsed) });
 
                 if (parsed.phase === 'final') {
@@ -103,7 +197,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     questionCount++;
                     renderQuestionMsg(parsed);
                 } else {
-                    // Fallback: treat as old format or plain text
+                    // Fallback: treat as plain text
                     const msg = parsed.message || JSON.stringify(parsed);
                     renderPlainAIMsg(msg);
                 }
@@ -112,10 +206,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 renderPlainAIMsg('⚠️ ' + (data.error || 'Something went wrong.'));
             }
         } catch (err) {
-            console.error('Chat Error:', err);
+            console.error('[LawBot] All retries failed:', err);
             removeLoadingMsg(loaderId);
-            showToast('Server connection failed.', 'error');
-            renderPlainAIMsg('⚠️ Connection Error. Please check if the server is running and try again.');
+            showToast('Connection issue — retrying didn\'t help.', 'error');
+            renderPlainAIMsg('⚠️ ' + err.message);
         } finally {
             sendBtn.classList.remove('loading');
             sendBtn.disabled = false;
@@ -156,7 +250,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div class="law-question-label">Question ${questionCount}</div>
                     <div class="law-question-text">${escapeHTML(data.question)}</div>
                     <div class="law-options-grid" id="options-${Date.now()}">
-                        ${(data.options || []).map((opt, i) => `
+                        ${(data.options || []).filter(opt => !/^others?\b/i.test(opt.trim())).map((opt, i) => `
                             <button class="law-option-card" data-option="${escapeAttr(opt)}">
                                 <span class="law-option-num">${String.fromCharCode(65 + i)}</span>
                                 <span class="law-option-label">${escapeHTML(opt)}</span>
@@ -276,7 +370,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             let bodyHTML = '';
 
-            if (def.key === 'risk_urgency' && typeof value === 'object') {
+            if (def.key === 'risk_urgency' && typeof value === 'object' && !Array.isArray(value)) {
                 const level = (value.level || 'MEDIUM').toUpperCase();
                 const levelClass = level === 'HIGH' ? 'high' : level === 'LOW' ? 'low' : 'medium';
                 bodyHTML = `
@@ -286,8 +380,18 @@ document.addEventListener('DOMContentLoaded', () => {
                     </div>
                     <div>${parseMd(value.description || '')}</div>
                 `;
+            } else if (Array.isArray(value)) {
+                // Render arrays as a clean bulleted list
+                bodyHTML = '<ul style="margin:0;padding-left:1.2em;">' +
+                    value.map(item => `<li>${parseMd(String(item))}</li>`).join('') +
+                    '</ul>';
+            } else if (typeof value === 'object' && value !== null) {
+                // Render other objects as key-value pairs
+                bodyHTML = Object.entries(value)
+                    .map(([k, v]) => `<p><strong>${escapeHTML(k)}:</strong> ${parseMd(String(v))}</p>`)
+                    .join('');
             } else {
-                bodyHTML = parseMd(typeof value === 'string' ? value : JSON.stringify(value));
+                bodyHTML = parseMd(String(value));
             }
 
             cardsHTML += `
