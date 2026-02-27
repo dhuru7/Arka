@@ -149,9 +149,17 @@ function setupEventListeners() {
         showToast('Layout reorganized', 'success');
     });
 
-    // Toolbar buttons
-    document.getElementById('btn-export-png').addEventListener('click', handleExportPNG);
-    document.getElementById('btn-export-svg').addEventListener('click', handleExportSVG);
+    // Toolbar buttons — download dropdown
+    setupDownloadDropdown();
+    document.getElementById('btn-export-png').addEventListener('click', () => { closeDownloadDropdown(); handleExportPNG(); });
+    document.getElementById('btn-export-svg').addEventListener('click', () => { closeDownloadDropdown(); handleExportSVG(); });
+    document.getElementById('btn-export-json').addEventListener('click', () => { closeDownloadDropdown(); handleExportJSON(); });
+
+    // Code viewer
+    document.getElementById('btn-code-view').addEventListener('click', handleOpenCodeEditor);
+    document.getElementById('code-editor-apply').addEventListener('click', handleApplyCodeEdit);
+    document.getElementById('code-editor-cancel').addEventListener('click', () => closeAllModals());
+
     document.getElementById('btn-save').addEventListener('click', () => openModal('save-modal'));
     document.getElementById('btn-load').addEventListener('click', handleOpenLoad);
 
@@ -254,8 +262,17 @@ function switchMode(mode) {
     // Re-bind example chips for the newly visible section
     bindExampleChips();
 
-    // Clear current diagram on mode switch
-    handleClearCode();
+    // Clear diagram but PRESERVE the user's typed input
+    currentBridgeCode = '';
+    emptyState.style.display = 'block';
+    renderer.svg.style.display = 'none';
+    renderer.nodes = [];
+    renderer.edges = [];
+    nodeCountEl.textContent = 'NODES: 0';
+    edgeCountEl.textContent = 'EDGES: 0';
+    hideProperties();
+    updateStatus('ready', 'Ready');
+
     showToast(`Switched to ${mode === 'block' ? 'Block Diagram' : 'Flowchart'} mode`, 'info');
 }
 
@@ -593,6 +610,88 @@ function handleClearCode() {
     edgeCountEl.textContent = 'EDGES: 0';
     hideProperties();
     updateStatus('ready', 'Ready');
+}
+
+// ═══ Download Dropdown ══════════════════════════════════════════════════════
+
+function setupDownloadDropdown() {
+    const btn = document.getElementById('btn-download');
+    const menu = document.getElementById('download-dropdown-menu');
+
+    btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        menu.classList.toggle('active');
+    });
+
+    // Close dropdown when clicking outside
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('#download-dropdown-wrapper')) {
+            menu.classList.remove('active');
+        }
+    });
+}
+
+function closeDownloadDropdown() {
+    const menu = document.getElementById('download-dropdown-menu');
+    if (menu) menu.classList.remove('active');
+}
+
+function handleExportJSON() {
+    const exportType = currentMode === 'block' ? 'block-diagram' : 'flowchart';
+    if (!currentBridgeCode && renderer.nodes.length === 0) {
+        showToast(`Generate a ${currentMode === 'block' ? 'block diagram' : 'flowchart'} first.`, 'error');
+        return;
+    }
+
+    const jsonData = {
+        mode: currentMode,
+        bridgeCode: currentBridgeCode,
+        nodes: renderer.nodes.map(n => ({ id: n.id, text: n.text, type: n.type, x: n.x, y: n.y, width: n.width, height: n.height })),
+        edges: renderer.edges.map(e => ({ from: e.from, to: e.to, label: e.label || null })),
+        exportedAt: new Date().toISOString()
+    };
+
+    const blob = new Blob([JSON.stringify(jsonData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.download = `${exportType}.json`;
+    link.href = url;
+    link.click();
+    URL.revokeObjectURL(url);
+    showToast('JSON exported!', 'success');
+}
+
+// ═══ Code Editor ════════════════════════════════════════════════════════════
+
+function handleOpenCodeEditor() {
+    const textarea = document.getElementById('code-editor-textarea');
+    textarea.value = currentBridgeCode || '';
+    openModal('code-editor-modal');
+
+    // Live preview: debounce input to re-render
+    if (!textarea._liveHandler) {
+        textarea._liveHandler = debounce(() => {
+            const code = textarea.value.trim();
+            if (code) {
+                currentBridgeCode = code;
+                renderFromCode(currentBridgeCode);
+            }
+        }, 600);
+        textarea.addEventListener('input', textarea._liveHandler);
+    }
+}
+
+function handleApplyCodeEdit() {
+    const textarea = document.getElementById('code-editor-textarea');
+    const code = textarea.value.trim();
+    if (!code) {
+        showToast('Code is empty.', 'error');
+        return;
+    }
+    currentBridgeCode = code;
+    renderFromCode(currentBridgeCode);
+    closeAllModals();
+    showToast('Code applied to diagram!', 'success');
 }
 
 // ═══ Firebase Save & Load ═══════════════════════════════════════════════════

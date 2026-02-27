@@ -88,6 +88,11 @@ class FlowchartRenderer {
         this.redoStack = [];
         this.maxUndoSteps = 50;
 
+        // ── Edge Dragging ─────────────────────────────────────────────────
+        this.isDraggingEdge = false;
+        this.dragEdge = null;
+        this.dragEdgePointIndex = -1;
+
         this._setupInteraction();
     }
 
@@ -669,6 +674,13 @@ class FlowchartRenderer {
             }
         }
 
+        // ── If user has custom waypoints, use polyline through them ──
+        if (edge.waypoints && edge.waypoints.length > 0) {
+            const pts = [from, ...edge.waypoints, to];
+            const segments = pts.map(p => `${p.x},${p.y}`).join(' L');
+            pathD = `M${segments}`;
+        }
+
         const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
         path.setAttribute('d', pathD);
         path.setAttribute('fill', 'none');
@@ -691,16 +703,91 @@ class FlowchartRenderer {
         hitPath.style.cursor = 'pointer';
         g.appendChild(hitPath);
 
+        // ── Draggable midpoint / waypoint handles ──
+        if (edge.waypoints && edge.waypoints.length > 0) {
+            // Render a handle for each user waypoint
+            edge.waypoints.forEach((wp, idx) => {
+                const handle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                handle.setAttribute('cx', wp.x);
+                handle.setAttribute('cy', wp.y);
+                handle.setAttribute('r', '5');
+                handle.setAttribute('fill', '#6366f1');
+                handle.setAttribute('stroke', '#fff');
+                handle.setAttribute('stroke-width', '1.5');
+                handle.setAttribute('class', 'edge-drag-handle');
+                handle.setAttribute('data-edge-from', edge.from);
+                handle.setAttribute('data-edge-to', edge.to);
+                handle.setAttribute('data-wp-index', idx);
+                handle.style.cursor = 'move';
+                g.appendChild(handle);
+            });
+        } else {
+            // Default: single midpoint handle at path center for creating first waypoint
+            let midX, midY;
+            if (edge.isBackRef) {
+                const pts = pathD.match(/[ML](-?[\d.]+),(-?[\d.]+)/g);
+                if (pts && pts.length >= 2) {
+                    const coords = pts.map(p => {
+                        const m = p.match(/(-?[\d.]+),(-?[\d.]+)/);
+                        return { x: parseFloat(m[1]), y: parseFloat(m[2]) };
+                    });
+                    midX = (coords[Math.floor(coords.length / 2)].x);
+                    midY = (coords[Math.floor(coords.length / 2)].y);
+                } else {
+                    midX = (from.x + to.x) / 2;
+                    midY = (from.y + to.y) / 2;
+                }
+            } else {
+                const dx = to.x - from.x;
+                const dy = to.y - from.y;
+                if (Math.abs(dx) < 5) {
+                    midX = (from.x + to.x) / 2;
+                    midY = (from.y + to.y) / 2;
+                } else {
+                    let cp1x, cp1y, cp2x, cp2y;
+                    if (dy < 0) {
+                        cp1x = from.x; cp1y = from.y + 40;
+                        cp2x = to.x; cp2y = to.y - 40;
+                    } else {
+                        const curveOff = Math.max(30, dy * 0.4);
+                        cp1x = from.x; cp1y = from.y + curveOff;
+                        cp2x = to.x; cp2y = to.y - curveOff;
+                    }
+                    midX = 0.125 * from.x + 0.375 * cp1x + 0.375 * cp2x + 0.125 * to.x;
+                    midY = 0.125 * from.y + 0.375 * cp1y + 0.375 * cp2y + 0.125 * to.y;
+                }
+            }
+
+            const handle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            handle.setAttribute('cx', midX);
+            handle.setAttribute('cy', midY);
+            handle.setAttribute('r', '5');
+            handle.setAttribute('fill', '#6366f1');
+            handle.setAttribute('stroke', '#fff');
+            handle.setAttribute('stroke-width', '1.5');
+            handle.setAttribute('class', 'edge-drag-handle');
+            handle.setAttribute('data-edge-from', edge.from);
+            handle.setAttribute('data-edge-to', edge.to);
+            handle.setAttribute('data-wp-index', '-1'); // means create new
+            handle.style.cursor = 'move';
+            handle.style.opacity = '0';
+            handle.addEventListener('mouseenter', () => { handle.style.opacity = '1'; });
+            g.addEventListener('mouseenter', () => { handle.style.opacity = '0.6'; });
+            g.addEventListener('mouseleave', () => { if (!this.isDraggingEdge) handle.style.opacity = '0'; });
+            g.appendChild(handle);
+        }
+
         // Edge label
         if (edge.label) {
             let labelX, labelY;
 
-            if (edge.isBackRef) {
-                // For back-ref polylines, find midpoint along the path segments
-                // pathD format: M... L... L... L... L... L...
+            if (edge.waypoints && edge.waypoints.length > 0) {
+                // Place label at first waypoint
+                labelX = edge.waypoints[0].x;
+                labelY = edge.waypoints[0].y - 16;
+            } else if (edge.isBackRef) {
                 const points = pathD.match(/[ML](-?[\d.]+),(-?[\d.]+)/g);
                 if (points && points.length >= 2) {
-                    // Calculate total path length and find midpoint
                     const coords = points.map(p => {
                         const m = p.match(/(-?[\d.]+),(-?[\d.]+)/);
                         return { x: parseFloat(m[1]), y: parseFloat(m[2]) };
@@ -732,18 +819,13 @@ class FlowchartRenderer {
                     labelY = (from.y + to.y) / 2;
                 }
             } else {
-                // For Bezier curves: compute actual point on curve at t=0.5
-                // Cubic Bezier: B(t) = (1-t)^3*P0 + 3(1-t)^2*t*P1 + 3(1-t)*t^2*P2 + t^3*P3
-                // At t=0.5: B = 0.125*P0 + 0.375*P1 + 0.375*P2 + 0.125*P3
                 const dx = to.x - from.x;
                 const dy = to.y - from.y;
 
                 if (Math.abs(dx) < 5) {
-                    // Straight line — simple midpoint is correct
                     labelX = (from.x + to.x) / 2;
                     labelY = (from.y + to.y) / 2;
                 } else {
-                    // Curved path — compute Bezier midpoint
                     let cp1x, cp1y, cp2x, cp2y;
                     if (dy < 0) {
                         cp1x = from.x; cp1y = from.y + 40;
@@ -753,7 +835,6 @@ class FlowchartRenderer {
                         cp1x = from.x; cp1y = from.y + curveOffset;
                         cp2x = to.x; cp2y = to.y - curveOffset;
                     }
-                    // B(0.5):
                     labelX = 0.125 * from.x + 0.375 * cp1x + 0.375 * cp2x + 0.125 * to.x;
                     labelY = 0.125 * from.y + 0.375 * cp1y + 0.375 * cp2y + 0.125 * to.y;
                 }
@@ -789,6 +870,10 @@ class FlowchartRenderer {
         if (this.selectedEdge && this.selectedEdge.from === edge.from && this.selectedEdge.to === edge.to) {
             path.setAttribute('stroke', '#fff');
             path.setAttribute('stroke-width', '3');
+            // Make waypoint handles permanently visible when selected
+            g.querySelectorAll('.edge-drag-handle').forEach(h => {
+                h.style.opacity = '1';
+            });
         }
 
         this.edgeLayer.appendChild(g);
@@ -846,6 +931,34 @@ class FlowchartRenderer {
 
         // ── Mouse interactions ──
         this.svg.addEventListener('mousedown', (e) => {
+            // ── Edge drag handle? ──
+            const dragHandle = e.target.closest('.edge-drag-handle');
+            if (dragHandle) {
+                const fromId = parseInt(dragHandle.dataset.edgeFrom);
+                const toId = parseInt(dragHandle.dataset.edgeTo);
+                const wpIdx = parseInt(dragHandle.dataset.wpIndex);
+                const edge = this.edges.find(ed => ed.from === fromId && ed.to === toId);
+                if (edge) {
+                    this.isDraggingEdge = true;
+                    this.dragEdge = edge;
+
+                    if (wpIdx === -1) {
+                        // Create a new waypoint at the current handle position
+                        if (!edge.waypoints) edge.waypoints = [];
+                        const cx = parseFloat(dragHandle.getAttribute('cx'));
+                        const cy = parseFloat(dragHandle.getAttribute('cy'));
+                        edge.waypoints.push({ x: cx, y: cy });
+                        this.dragEdgePointIndex = edge.waypoints.length - 1;
+                    } else {
+                        this.dragEdgePointIndex = wpIdx;
+                    }
+
+                    e.preventDefault();
+                    e.stopPropagation();
+                    return;
+                }
+            }
+
             const nodeGroup = e.target.closest('.node-group');
             const edgeGroup = e.target.closest('.edge-group');
 
@@ -889,6 +1002,20 @@ class FlowchartRenderer {
         });
 
         window.addEventListener('mousemove', (e) => {
+            // Edge waypoint dragging
+            if (this.isDraggingEdge && this.dragEdge) {
+                const rect = this.svg.getBoundingClientRect();
+                const mx = (e.clientX - rect.left - this.offsetX) / this.scale;
+                const my = (e.clientY - rect.top - this.offsetY) / this.scale;
+                const wp = this.dragEdge.waypoints[this.dragEdgePointIndex];
+                if (wp) {
+                    wp.x = mx;
+                    wp.y = my;
+                    this._drawAll();
+                }
+                return;
+            }
+
             if (this.isDragging && this.dragNode) {
                 const rect = this.svg.getBoundingClientRect();
                 const mx = (e.clientX - rect.left - this.offsetX) / this.scale;
@@ -914,6 +1041,15 @@ class FlowchartRenderer {
         });
 
         window.addEventListener('mouseup', (e) => {
+            // Edge waypoint drag end
+            if (this.isDraggingEdge && this.dragEdge) {
+                this._saveUndoState();
+                this.isDraggingEdge = false;
+                this.dragEdge = null;
+                this.dragEdgePointIndex = -1;
+                return;
+            }
+
             if (this.isDragging && this.dragNode) {
                 // Save undo state after drag
                 if (this.dragNode.x !== this.nodeStartX || this.dragNode.y !== this.nodeStartY) {
@@ -1122,7 +1258,7 @@ class FlowchartRenderer {
     _saveUndoState() {
         const state = {
             nodes: this.nodes.map(n => ({ ...n, color: n.color ? { ...n.color } : null })),
-            edges: this.edges.map(e => ({ ...e }))
+            edges: this.edges.map(e => ({ ...e, waypoints: e.waypoints ? e.waypoints.map(w => ({ ...w })) : undefined }))
         };
         this.undoStack.push(JSON.stringify(state));
         if (this.undoStack.length > this.maxUndoSteps) this.undoStack.shift();

@@ -922,6 +922,135 @@ textarea::placeholder {
     }
 }
 
+/* ── Download Dropdown ──────────────────────────────────────────────────── */
+.dropdown-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.dropdown-menu {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    min-width: 180px;
+    background: rgba(10, 10, 15, 0.95);
+    backdrop-filter: blur(20px);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-sm);
+    padding: 6px;
+    display: none;
+    flex-direction: column;
+    gap: 2px;
+    z-index: 100;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+    animation: dropdown-in 0.15s ease-out;
+}
+
+.dropdown-menu.active {
+    display: flex;
+}
+
+@keyframes dropdown-in {
+    from {
+        opacity: 0;
+        transform: translateY(-6px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    text-transform: none;
+    letter-spacing: 0.3px;
+    color: var(--fg-muted);
+    background: transparent;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    width: 100%;
+    justify-content: flex-start;
+}
+
+.dropdown-item:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--fg);
+}
+
+.dropdown-item svg {
+    flex-shrink: 0;
+    width: 16px;
+    height: 16px;
+}
+
+/* ── Code Editor Modal ─────────────────────────────────────────────────── */
+.code-editor-modal-content {
+    max-width: 700px !important;
+    width: 90vw;
+}
+
+.code-editor-body {
+    padding: 16px 24px 24px !important;
+}
+
+.code-editor-hint {
+    font-size: 0.8rem;
+    color: var(--fg-muted);
+    margin-bottom: 12px;
+    font-family: var(--font-mono);
+    letter-spacing: 0.3px;
+}
+
+.code-editor-textarea {
+    width: 100%;
+    min-height: 320px;
+    max-height: 55vh;
+    background: rgba(0, 0, 0, 0.7) !important;
+    border: 1px solid var(--border-light) !important;
+    border-radius: var(--radius-sm) !important;
+    color: #a5f3fc !important;
+    font-family: 'Space Mono', 'Fira Code', 'Consolas', monospace !important;
+    font-size: 0.85rem !important;
+    line-height: 1.6 !important;
+    padding: 16px !important;
+    resize: vertical;
+    tab-size: 4;
+    white-space: pre;
+    overflow-x: auto;
+    transition: border-color 0.2s;
+}
+
+.code-editor-textarea:focus {
+    border-color: var(--accent) !important;
+    box-shadow: 0 0 0 2px rgba(229, 46, 46, 0.15);
+    outline: none;
+}
+
+.code-editor-textarea::placeholder {
+    color: var(--border-light) !important;
+    font-style: italic;
+}
+
+/* ── Edge Drag Indicator ───────────────────────────────────────────────── */
+.edge-drag-handle {
+    cursor: move;
+    transition: r 0.15s ease, fill 0.15s ease;
+}
+
+.edge-drag-handle:hover {
+    r: 7;
+    fill: var(--accent, #E52E2E);
+}
+
 /* ── Mobile Sidebar Toggle ──────────────────────────────────────────────── */
 .sidebar-toggle {
     display: none;
