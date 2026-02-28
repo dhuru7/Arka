@@ -35,6 +35,13 @@ let currentMermaidCode = '';
 let db = null; // Firebase Realtime DB reference
 let currentMode = 'flowchart'; // 'flowchart' or 'block'
 let currentScale = 1;
+let selectedNodeOriginalText = '';
+let selectedNodeElement = null;
+
+const appState = {
+    flowchart: { code: '', prompt: '' },
+    block: { code: '', prompt: '' }
+};
 
 // ═══ Initialization ═════════════════════════════════════════════════════════
 
@@ -45,10 +52,10 @@ document.addEventListener('DOMContentLoaded', () => {
     setupModeToggle();
     updateStatus('ready', 'Ready');
 
-    // Hide property panel since we don't use it for mermaid
+    // Hide property panel since we don't use it initially
     document.getElementById('properties-panel').style.display = 'none';
 
-    // Disable unneeded toolbars
+    // Disable unneeded toolbars initially
     document.getElementById('btn-undo').disabled = true;
     document.getElementById('btn-redo').disabled = true;
     document.getElementById('btn-delete-selected').disabled = true;
@@ -87,23 +94,20 @@ function setupEventListeners() {
 
     // Zoom controls
     document.getElementById('zoom-in').addEventListener('click', () => {
-        currentScale += 0.1;
-        applyZoom();
+        if (panZoomInstance) { panZoomInstance.zoomIn(); applyZoom(); }
     });
     document.getElementById('zoom-out').addEventListener('click', () => {
-        currentScale = Math.max(0.1, currentScale - 0.1);
-        applyZoom();
+        if (panZoomInstance) { panZoomInstance.zoomOut(); applyZoom(); }
     });
     document.getElementById('zoom-fit').addEventListener('click', () => {
-        currentScale = 1;
-        applyZoom();
+        if (panZoomInstance) { panZoomInstance.fit(); panZoomInstance.center(); applyZoom(); }
     });
 
     // Toolbar buttons — download dropdown
     setupDownloadDropdown();
     document.getElementById('btn-export-svg').addEventListener('click', () => { closeDownloadDropdown(); handleExportSVG(); });
-    // Disable PNG and JSON export as they require canvas rendering logic
-    document.getElementById('btn-export-png').style.display = 'none';
+    document.getElementById('btn-export-png').addEventListener('click', () => { closeDownloadDropdown(); handleExportPNG(); });
+    // Disable JSON export as it is irrelevant for raw Mermaid
     document.getElementById('btn-export-json').style.display = 'none';
 
     // Code viewer
@@ -130,6 +134,26 @@ function setupEventListeners() {
         });
     });
 
+    // Custom Edit Modal Binding
+    document.getElementById('btn-edit-text').addEventListener('click', () => {
+        if (!selectedNodeOriginalText || !selectedNodeElement) return;
+
+        showInlineEdit(selectedNodeElement, selectedNodeOriginalText, (newText) => {
+            if (newText && newText !== selectedNodeOriginalText) {
+                if (currentMermaidCode.includes(selectedNodeOriginalText)) {
+                    // Direct code replacement
+                    currentMermaidCode = currentMermaidCode.replace(selectedNodeOriginalText, newText);
+                    renderFromCode(currentMermaidCode);
+                } else {
+                    // Fallback to AI Refine
+                    refineInput.value = `Change "${selectedNodeOriginalText}" to "${newText}"`;
+                    handleRefine();
+                }
+                resetSelection();
+            }
+        });
+    });
+
     // Refine
     refineBtn.addEventListener('click', handleRefine);
     refineInput.addEventListener('keydown', (e) => {
@@ -150,15 +174,18 @@ function setupEventListeners() {
     document.getElementById('save-confirm').addEventListener('click', handleSave);
 }
 
+let panZoomInstance = null;
+
 function applyZoom() {
-    zoomLevelEl.textContent = Math.round(currentScale * 100) + '%';
-    const svgEl = canvasContainer.querySelector('svg');
-    if (svgEl) {
-        svgEl.style.transform = `scale(${currentScale})`;
-        svgEl.style.transformOrigin = 'center center';
-        svgEl.style.transition = 'transform 0.2s';
+    if (panZoomInstance) {
+        // svg-pan-zoom handles zooming internally now. We just update the label correctly.
+        zoomLevelEl.textContent = Math.round(panZoomInstance.getZoom() * 100) + '%';
+    } else {
+        zoomLevelEl.textContent = Math.round(currentScale * 100) + '%';
     }
 }
+
+// Modify the initial zoom controls logic replacing currentScale
 
 // ═══ Mode Toggle ════════════════════════════════════════════════════════════
 
@@ -219,11 +246,23 @@ function switchMode(mode) {
 
     bindExampleChips();
 
-    currentMermaidCode = '';
-    showEmptyState();
-    updateStatus('ready', 'Ready');
+    // Save previous state
+    const previousMode = mode === 'block' ? 'flowchart' : 'block';
+    appState[previousMode].code = currentMermaidCode;
+    appState[previousMode].prompt = promptInput.value;
 
-    showToast(`Switched to ${mode === 'block' ? 'Block Diagram' : 'Flowchart'} mode`, 'info');
+    // Load new state
+    currentMermaidCode = appState[mode].code || '';
+    promptInput.value = appState[mode].prompt || '';
+
+    if (currentMermaidCode) {
+        renderFromCode(currentMermaidCode);
+    } else {
+        showEmptyState();
+    }
+
+    resetSelection();
+    updateStatus('ready', 'Ready');
 }
 
 function bindExampleChips() {
@@ -356,6 +395,102 @@ async function renderFromCode(code) {
         nodeCountEl.textContent = 'NODES: ' + (matchesNodes ? Math.floor(matchesNodes.length / 2) : '?');
         edgeCountEl.textContent = 'EDGES: ' + (matchesEdges ? matchesEdges.length : '?');
 
+        // Initialize svg-pan-zoom
+        const svgEl = canvasContainer.querySelector('svg');
+        if (svgEl) {
+            // Strip Mermaid's intrinsic limits so svg-pan-zoom doesn't get boxed/cut off.
+            svgEl.style.maxWidth = 'none';
+            svgEl.style.width = '100%';
+            svgEl.style.height = '100%';
+
+            // Add click-to-edit capability
+            const nodesAndEdges = canvasContainer.querySelectorAll('.node, .edgeLabel');
+
+            canvasContainer.addEventListener('click', () => {
+                resetSelection(nodesAndEdges);
+            });
+
+            nodesAndEdges.forEach(element => {
+                element.style.cursor = 'pointer';
+                element.title = 'Select to Edit';
+                element.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    resetSelection(nodesAndEdges);
+
+                    selectedNodeOriginalText = element.textContent.trim();
+                    selectedNodeElement = element;
+                    if (!selectedNodeOriginalText) return;
+
+                    const isEdge = element.classList.contains('edgeLabel');
+                    if (isEdge) {
+                        element.style.filter = 'drop-shadow(0 0 8px #ffffff)';
+                    } else {
+                        // dotted cyan neon light
+                        const shapes = element.querySelectorAll('rect, circle, polygon, path');
+                        shapes.forEach(shape => {
+                            shape.dataset.origStroke = shape.style.stroke || shape.getAttribute('stroke') || '';
+                            shape.dataset.origDash = shape.style.strokeDasharray || shape.getAttribute('stroke-dasharray') || '';
+                            shape.dataset.origFilter = shape.style.filter || shape.getAttribute('filter') || '';
+                            shape.style.stroke = '#00ffff';
+                            shape.style.strokeDasharray = '5, 5';
+                            shape.style.filter = 'drop-shadow(0 0 8px #00ffff)';
+                        });
+                        // Fallback
+                        if (shapes.length === 0) {
+                            element.style.filter = 'drop-shadow(0 0 10px #00ffff)';
+                        }
+                    }
+
+                    const editBtn = document.getElementById('btn-edit-text');
+                    if (editBtn) {
+                        editBtn.disabled = false;
+                        editBtn.style.color = '#ffffff';
+                        editBtn.style.borderColor = '#ffffff';
+                    }
+
+                    const propPanel = document.getElementById('properties-panel');
+                    const propContent = document.getElementById('prop-content');
+                    if (propPanel && propContent) {
+                        propPanel.style.display = 'block';
+                        propContent.innerHTML = `
+                            <div class="prop-group">
+                                <div class="prop-label">Block Color</div>
+                                <div class="prop-color-row">
+                                    <button class="prop-color-swatch" style="background:#222;" data-color="#222222"></button>
+                                    <button class="prop-color-swatch" style="background:#555;" data-color="#555555"></button>
+                                    <button class="prop-color-swatch" style="background:#E52E2E;" data-color="#E52E2E"></button>
+                                    <button class="prop-color-swatch" style="background:#3b82f6;" data-color="#3b82f6"></button>
+                                    <button class="prop-color-swatch" style="background:#10b981;" data-color="#10b981"></button>
+                                    <button class="prop-color-swatch" style="background:#f59e0b;" data-color="#f59e0b"></button>
+                                </div>
+                            </div>
+                        `;
+
+                        propContent.querySelectorAll('.prop-color-swatch').forEach(swtch => {
+                            swtch.addEventListener('click', () => {
+                                const color = swtch.getAttribute('data-color');
+                                refineInput.value = `Change the color of "${selectedNodeOriginalText}" to ${color}`;
+                                handleRefine();
+                            });
+                        });
+                    }
+                });
+            });
+
+            if (panZoomInstance) {
+                panZoomInstance.destroy();
+            }
+            panZoomInstance = svgPanZoom(svgEl, {
+                zoomEnabled: true,
+                controlIconsEnabled: false,
+                fit: true,
+                center: true,
+                minZoom: 0.1,
+                maxZoom: 10,
+                onZoom: function () { applyZoom(); }
+            });
+        }
+
         currentScale = 1;
         applyZoom();
 
@@ -386,6 +521,73 @@ function handleExportSVG() {
     link.click();
     URL.revokeObjectURL(url);
     showToast('SVG exported!', 'success');
+}
+
+async function handleExportPNG() {
+    const exportType = currentMode === 'block' ? 'block-diagram' : 'flowchart';
+    if (!currentMermaidCode) {
+        showToast(`Generate a ${currentMode === 'block' ? 'block diagram' : 'flowchart'} first.`, 'error');
+        return;
+    }
+
+    updateStatus('loading', 'Exporting PNG...');
+
+    try {
+        // Render a brand new clean invisible SVG to entirely bypass UI pan/zoom visual artifacts
+        const { svg } = await mermaid.render('mermaid-export-graph', currentMermaidCode);
+
+        // Parse it explicitly into DOM
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(svg, 'image/svg+xml');
+        const svgElement = doc.documentElement;
+
+        // Extract native original proportions
+        let width = 1200, height = 1200;
+        if (svgElement.getAttribute('viewBox')) {
+            const parts = svgElement.getAttribute('viewBox').split(' ');
+            width = parseFloat(parts[2]);
+            height = parseFloat(parts[3]);
+        }
+
+        // Force native sizes explicitly to bypass embedded intrinsic boundaries
+        svgElement.style.maxWidth = 'none';
+        svgElement.setAttribute('width', width);
+        svgElement.setAttribute('height', height);
+
+        const modSvgData = new XMLSerializer().serializeToString(svgElement);
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width * 2; // High-res output
+        canvas.height = height * 2;
+        const ctx = canvas.getContext('2d');
+        ctx.scale(2, 2);
+
+        // Fill white background cleanly
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, width, height);
+
+        const img = new Image();
+        img.onload = () => {
+            ctx.drawImage(img, 0, 0, width, height);
+            const link = document.createElement('a');
+            link.download = `${exportType}.png`;
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+            updateStatus('ready', 'Exported');
+            showToast('High-Res PNG exported!', 'success');
+        };
+        img.onerror = () => {
+            showToast('Image encoding failed. Trying SVG export instead.', 'error');
+            handleExportSVG();
+        };
+
+        // Use Unicode-safe encoding to guarantee no text crashes
+        img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(modSvgData);
+
+    } catch (err) {
+        showToast('PNG Export failed: ' + err.message, 'error');
+        updateStatus('error', 'Error');
+    }
 }
 
 // ═══ Code Actions ═══════════════════════════════════════════════════════════
@@ -519,19 +721,19 @@ function handleOpenLoad() {
                 const div = document.createElement('div');
                 div.className = 'saved-item';
                 div.innerHTML = `
-                    <div>
+                        < div >
                         <div class="saved-item-name">${escapeHtml(item.name)}</div>
                         <div class="saved-item-date">${new Date(item.createdAt).toLocaleDateString()}</div>
-                    </div>
-                    <div class="saved-item-actions">
-                        <button class="saved-item-btn load-item" data-id="${item.id}">Load</button>
-                        <button class="saved-item-btn delete" data-id="${item.id}">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-                                <line x1="18" y1="6" x2="6" y2="18"></line>
-                                <line x1="6" y1="6" x2="18" y2="18"></line>
-                            </svg>
-                        </button>
-                    </div>
+                    </div >
+                            <div class="saved-item-actions">
+                                <button class="saved-item-btn load-item" data-id="${item.id}">Load</button>
+                                <button class="saved-item-btn delete" data-id="${item.id}">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+                                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                                    </svg>
+                                </button>
+                            </div>
                 `;
                 listEl.appendChild(div);
             });
@@ -629,4 +831,101 @@ function debounce(fn, delay) {
         clearTimeout(timer);
         timer = setTimeout(() => fn.apply(this, args), delay);
     };
+}
+
+// ═══ Custom Modal Logic ═════════════════════════════════════════════════════
+
+function resetSelection(nodesAndEdges = null) {
+    if (!nodesAndEdges && canvasContainer) {
+        nodesAndEdges = canvasContainer.querySelectorAll('.node, .edgeLabel');
+    }
+    if (nodesAndEdges) {
+        nodesAndEdges.forEach(n => {
+            n.style.filter = '';
+            const shapes = n.querySelectorAll('rect, circle, polygon, path');
+            shapes.forEach(shape => {
+                if (shape.dataset.origStroke !== undefined) {
+                    shape.style.stroke = shape.dataset.origStroke;
+                    shape.style.strokeDasharray = shape.dataset.origDash;
+                    shape.style.filter = shape.dataset.origFilter;
+                }
+            });
+        });
+    }
+
+    selectedNodeOriginalText = '';
+    selectedNodeElement = null;
+
+    const editBtn = document.getElementById('btn-edit-text');
+    if (editBtn) {
+        editBtn.disabled = true;
+        editBtn.style.color = '';
+        editBtn.style.filter = '';
+        editBtn.style.borderColor = '';
+    }
+
+    const propPanel = document.getElementById('properties-panel');
+    if (propPanel) propPanel.style.display = 'none';
+}
+
+function showInlineEdit(svgElement, defaultText, onSave) {
+    if (!svgElement) return;
+    const rect = svgElement.getBoundingClientRect();
+
+    // Create an absolute positioned input over the SVG text
+    const inp = document.createElement('input');
+    inp.type = 'text';
+    inp.value = defaultText;
+    inp.style.position = 'fixed';
+    inp.style.left = rect.left + 'px';
+    inp.style.top = rect.top + 'px';
+    inp.style.width = Math.max(rect.width, 100) + 'px';
+    inp.style.height = Math.max(rect.height, 30) + 'px';
+    inp.style.zIndex = '9999';
+    inp.style.background = 'rgba(0, 0, 0, 0.8)';
+    inp.style.color = '#fff';
+    inp.style.border = '2px solid #00ffff';
+    inp.style.outline = 'none';
+    inp.style.textAlign = 'center';
+    inp.style.fontFamily = 'var(--font-body), sans-serif';
+    inp.style.fontSize = '14px';
+    inp.style.borderRadius = '4px';
+    inp.style.boxShadow = '0 0 10px #00ffff';
+
+    // Auto-hide the actual SVG element visually to avoid overlap while typing
+    const oldOpacity = svgElement.style.opacity;
+    svgElement.style.opacity = '0';
+
+    if (typeof panZoomInstance !== 'undefined' && panZoomInstance) {
+        panZoomInstance.disablePan();
+        panZoomInstance.disableZoom();
+    }
+
+    document.body.appendChild(inp);
+    inp.focus();
+    inp.select();
+
+    const finish = (save) => {
+        if (!inp.parentNode) return; // Prevent duplicate execution
+        svgElement.style.opacity = oldOpacity;
+        document.body.removeChild(inp);
+
+        if (typeof panZoomInstance !== 'undefined' && panZoomInstance) {
+            panZoomInstance.enablePan();
+            panZoomInstance.enableZoom();
+        }
+
+        if (save) onSave(inp.value.trim());
+    };
+
+    inp.addEventListener('blur', () => finish(true));
+    inp.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            inp.blur();
+        } else if (e.key === 'Escape') {
+            e.preventDefault();
+            finish(false);
+        }
+    });
 }
