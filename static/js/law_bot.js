@@ -55,10 +55,16 @@ document.addEventListener('DOMContentLoaded', () => {
         inputArea.focus();
     });
 
-    // ── Build API URL (works both locally and on Vercel) ────────────────────
+    // ── Build API URL (auto-detects environment) ─────────────────────────
     function getApiUrl(path) {
-        // Use relative URL so it works on both local Flask and Vercel serverless
-        return path;
+        const host = window.location.hostname;
+        const port = window.location.port;
+        // On Vercel or Flask (port 5000) or production, use relative URLs
+        if (host.includes('vercel.app') || port === '5000' || port === '') {
+            return path;
+        }
+        // On Live Server or other dev servers, proxy to Flask
+        return 'http://127.0.0.1:5000' + path;
     }
 
     // ── Fetch with retry (handles empty responses and JSON parse errors) ──

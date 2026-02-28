@@ -25,6 +25,39 @@ const sidebar = document.getElementById('sidebar');
 const refineInput = document.getElementById('refine-input');
 const refineBtn = document.getElementById('refine-btn');
 
+// ── API URL Helper ──────────────────────────────────────────────────────
+// Detects environment and returns correct API base URL:
+// - Vercel (*.vercel.app): relative URL (serverless functions handle it)
+// - Flask (port 5000): relative URL (Flask handles it)
+// - Live Server (any other port): proxy to Flask at localhost:5000
+function getApiUrl(path) {
+    const host = window.location.hostname;
+    const port = window.location.port;
+    // On Vercel or Flask (5000), use relative URLs
+    if (host.includes('vercel.app') || port === '5000' || port === '') {
+        return path;
+    }
+    // On Live Server or other, proxy to Flask
+    return 'http://127.0.0.1:5000' + path;
+}
+
+// Safe JSON parse that prevents crashes on non-JSON responses
+async function safeJsonParse(response) {
+    const text = await response.text();
+    if (!text || !text.trim()) {
+        throw new Error('Server returned an empty response. Make sure the Flask server is running (python app.py).');
+    }
+    try {
+        return JSON.parse(text);
+    } catch (e) {
+        // Check if it's an HTML error page
+        if (text.includes('<!DOCTYPE') || text.includes('<html') || text.includes('Cannot POST')) {
+            throw new Error('API endpoint not found. Make sure the Flask server is running on port 5000 (python app.py).');
+        }
+        throw new Error('Invalid response from server: ' + text.substring(0, 100));
+    }
+}
+
 // ── State ───────────────────────────────────────────────────────────────
 let currentMermaidCode = '';
 // db is already declared in firebase-init.js as: const db = firebase.database();
@@ -402,7 +435,7 @@ async function handleGenerate() {
     updateStatus('loading', 'Generating...');
 
 
-    const generateEndpoint = '/api/generate';
+    const generateEndpoint = getApiUrl('/api/generate');
 
     try {
         const response = await fetch(generateEndpoint, {
@@ -411,7 +444,7 @@ async function handleGenerate() {
             body: JSON.stringify({ prompt, mode: currentMode })
         });
 
-        const data = await response.json();
+        const data = await safeJsonParse(response);
 
         if (!response.ok) {
             throw new Error(data.error || 'Generation failed');
@@ -464,7 +497,7 @@ async function handleRefine() {
     refineBtn.textContent = 'Refining...';
     updateStatus('loading', 'Refining...');
 
-    const refineEndpoint = '/api/refine';
+    const refineEndpoint = getApiUrl('/api/refine');
 
     // Backup the current code before refining so we can rollback on failure
     const backupCode = currentMermaidCode;
@@ -476,7 +509,7 @@ async function handleRefine() {
             body: JSON.stringify({ current_code: currentMermaidCode, instruction, mode: currentMode })
         });
 
-        const data = await response.json();
+        const data = await safeJsonParse(response);
         if (!response.ok) throw new Error(data.error || 'Refinement failed');
 
         currentMermaidCode = data.code;

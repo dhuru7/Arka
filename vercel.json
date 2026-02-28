@@ -9,7 +9,15 @@
             "destination": "/templates/login.html"
         },
         {
+            "source": "/login.html",
+            "destination": "/templates/login.html"
+        },
+        {
             "source": "/signup",
+            "destination": "/templates/signup.html"
+        },
+        {
+            "source": "/signup.html",
             "destination": "/templates/signup.html"
         },
         {
@@ -17,11 +25,27 @@
             "destination": "/templates/index.html"
         },
         {
+            "source": "/index.html",
+            "destination": "/templates/index.html"
+        },
+        {
             "source": "/about",
             "destination": "/templates/about.html"
         },
         {
+            "source": "/about.html",
+            "destination": "/templates/about.html"
+        },
+        {
             "source": "/law-bot",
+            "destination": "/templates/law_bot.html"
+        },
+        {
+            "source": "/law-bot.html",
+            "destination": "/templates/law_bot.html"
+        },
+        {
+            "source": "/law_bot.html",
             "destination": "/templates/law_bot.html"
         },
         {
