@@ -181,28 +181,55 @@
         <!-- ═══ Main Canvas Area ══════════════════════════════════════════ -->
         <main class="main-area">
 
-            <!-- App Theme Toggle Button -->
-            <button class="icon-btn" id="app-theme-toggle" title="Toggle Light/Dark Mode"
-                style="position: absolute; top: 24px; right: 24px; z-index: 1000; padding: 10px; background: rgba(0,0,0,0.2); border: 1px solid var(--border); border-radius: 8px;">
-                <!-- Default shows Sun because body is Dark (meaning "switch to light") -->
-                <svg id="theme-icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                    style="display: block; width: 20px; height: 20px;">
-                    <circle cx="12" cy="12" r="5"></circle>
-                    <line x1="12" y1="1" x2="12" y2="3"></line>
-                    <line x1="12" y1="21" x2="12" y2="23"></line>
-                    <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
-                    <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
-                    <line x1="1" y1="12" x2="3" y2="12"></line>
-                    <line x1="21" y1="12" x2="23" y2="12"></line>
-                    <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
-                    <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
-                </svg>
-                <!-- Moon shows when body is Light (meaning "switch to dark") -->
-                <svg id="theme-icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                    style="display: none; width: 20px; height: 20px;">
-                    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
-                </svg>
-            </button>
+            <!-- Top Settings & Profile Bar -->
+            <div class="top-nav-bar"
+                style="display: flex; align-items: center; justify-content: flex-start; gap: 12px; padding: 24px; width: 100%; box-sizing: border-box;">
+
+                <!-- App Theme Toggle Button -->
+                <button class="icon-btn" id="app-theme-toggle" title="Toggle Light/Dark Mode"
+                    style="padding: 10px; background: rgba(0,0,0,0.2); border: 1px solid var(--border); border-radius: 8px; cursor: pointer;">
+                    <!-- Default shows Sun because body is Dark -->
+                    <svg id="theme-icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        style="display: block; width: 20px; height: 20px;">
+                        <circle cx="12" cy="12" r="5"></circle>
+                        <line x1="12" y1="1" x2="12" y2="3"></line>
+                        <line x1="12" y1="21" x2="12" y2="23"></line>
+                        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                        <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                        <line x1="1" y1="12" x2="3" y2="12"></line>
+                        <line x1="21" y1="12" x2="23" y2="12"></line>
+                        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                        <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+                    </svg>
+                    <!-- Moon shows when body is Light -->
+                    <svg id="theme-icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        style="display: none; width: 20px; height: 20px;">
+                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+                    </svg>
+                </button>
+
+                <!-- Profile Info & Usage Stats Container -->
+                <div id="user-profile-container"
+                    style="display: flex; flex-direction: column; justify-content: center; background: rgba(0, 0, 0, 0.2); border: 1px solid var(--border); border-radius: 8px; padding: 6px 16px;">
+                    <span id="user-display-name"
+                        style="font-size: 0.85rem; font-weight: 600; color: var(--fg); margin-bottom: 2px;">Not Logged
+                        In</span>
+                    <span id="user-usage-stats" style="font-size: 0.75rem; color: var(--fg-muted);">Usage: 0 / 10
+                        limit</span>
+                </div>
+
+                <!-- User Profile & Logout -->
+                <button class="icon-btn" id="btn-logout" title="Log Out"
+                    style="padding: 10px; background: rgba(0,0,0,0.2); border: 1px solid var(--border); border-radius: 8px; cursor: pointer;">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        style="width: 20px; height: 20px;">
+                        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                        <polyline points="16 17 21 12 16 7"></polyline>
+                        <line x1="21" y1="12" x2="9" y2="12"></line>
+                    </svg>
+                </button>
+
+            </div>
 
             <!-- Floating Toolbar -->
             <div class="toolbar">
@@ -426,13 +453,22 @@
             </div>
             <div class="modal-body">
                 <div class="form-group">
-                    <label for="save-name">Reference Name</label>
-                    <input type="text" id="save-name" placeholder="Enter reference name...">
+                    <label for="save-folder">Select Folder</label>
+                    <select id="save-folder"
+                        style="width: 100%; height: 40px; border: 1px solid var(--border); border-radius: 6px; padding: 0 12px; background: rgba(0,0,0,0.2); color: var(--fg); font-family: var(--font-body); outline: none;">
+                        <option value="folder1">Folder 1</option>
+                        <option value="folder2">Folder 2</option>
+                        <option value="folder3">Folder 3</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="save-name">Diagram Name</label>
+                    <input type="text" id="save-name" placeholder="Enter diagram name...">
                 </div>
             </div>
             <div class="modal-footer">
                 <button class="modal-cancel">Cancel</button>
-                <button class="primary" id="save-confirm">Save to System</button>
+                <button class="primary" id="save-confirm">Save Diagram</button>
             </div>
         </div>
     </div>
@@ -553,14 +589,73 @@
     <!-- ═══ Scripts ═══════════════════════════════════════════════════════ -->
     <!-- Firebase (Compat SDK for simplicity) -->
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
+    <!-- Core Firebase Init script -->
+    <script src="/static/js/firebase-init.js"></script>
+
+    <script>
+        // Global Auth State
+        let currentUser = null;
+
+        firebase.auth().onAuthStateChanged(async (user) => {
+            if (user) {
+                currentUser = user;
+
+                // Update UI Profile Name
+                const nameEl = document.getElementById('user-display-name');
+                if (user.isAnonymous) {
+                    nameEl.innerText = "Guest User";
+                } else if (user.displayName) {
+                    nameEl.innerText = user.displayName;
+                } else {
+                    nameEl.innerText = user.email || "Logged In";
+                }
+
+                // Fetch limits and stats dynamically from Firebase real-time DB via our check script logically initialized earlier
+                try {
+                    const data = await checkUserLimits(user.uid, user.isAnonymous);
+                    const today = new Date().toISOString().split('T')[0];
+                    const todayUsage = (data.dailyUsage && data.dailyUsage[today]) ? data.dailyUsage[today] : 0;
+
+                    const statEl = document.getElementById('user-usage-stats');
+                    if (user.isAnonymous) {
+                        const guestTotal = data.totalGuestDiagrams || 0;
+                        statEl.innerText = `Guest Uses: ${guestTotal} / 5 Max`;
+                    } else {
+                        statEl.innerText = `Daily Usage: ${todayUsage} / 10 Max`;
+                    }
+                } catch (e) {
+                    // if it errors out it means they hit the limit, but we'll still update the counter if the promise resolves/rejects
+                    const today = new Date().toISOString().split('T')[0];
+                    const statEl = document.getElementById('user-usage-stats');
+
+                    if (user.isAnonymous) {
+                        statEl.innerText = `Guest Uses: Limit Reached (5/5)`;
+                        statEl.style.color = '#ff4d4d';
+                    } else {
+                        statEl.innerText = `Daily Usage: Limit Reached (10/10)`;
+                        statEl.style.color = '#ff4d4d';
+                    }
+                }
+
+            } else {
+                // Redirect if not logged in
+                window.location.href = 'login.html';
+            }
+        });
+
+        document.getElementById('btn-logout').addEventListener('click', () => {
+            firebase.auth().signOut();
+        });
+    </script>
 
     <!-- Mermaid JS -->
     <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/svg-pan-zoom@3.6.1/dist/svg-pan-zoom.min.js"></script>
 
     <!-- App Scripts -->
-    <!-- Removed parser.js and renderer.js as we are using Mermaid now -->
     <script src="/static/js/app.js"></script>
 </body>
 

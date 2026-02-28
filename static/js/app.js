@@ -7,13 +7,8 @@
  */
 
 // ── Firebase Config ─────────────────────────────────────────────────────────
-const FIREBASE_CONFIG = {
-    apiKey: "AIzaSyBxYkOQFnSuVEFZBOBnMbtB3OBBt0IgVuA",
-    authDomain: "flowcraft-gen.firebaseapp.com",
-    projectId: "flowcraft-gen",
-    storageBucket: "flowcraft-gen.firebasestorage.app",
-    databaseURL: "https://flowcraft-gen-default-rtdb.firebaseio.com"
-};
+// Configuration now handled by /static/js/firebase-init.js
+// db and auth references are also globally available from there.
 
 // ── DOM Elements ────────────────────────────────────────────────────────────
 const promptInput = document.getElementById('prompt-input');
@@ -46,7 +41,12 @@ MODES.forEach(m => appState[m] = { code: '', prompt: '', history: [], historyInd
 // ═══ Initialization ═════════════════════════════════════════════════════════
 
 document.addEventListener('DOMContentLoaded', () => {
-    initFirebase();
+    // Wait for auth to be ready to properly setup app state
+    firebase.auth().onAuthStateChanged((user) => {
+        if (user) {
+            console.log('User signed in', user.uid);
+        }
+    });
 
     // Ensure the theme name dynamically updates on load
     const btnText = document.getElementById('btn-theme-text');
@@ -71,20 +71,7 @@ document.addEventListener('DOMContentLoaded', () => {
     updateHistoryButtons();
 });
 
-// ── Firebase Init ───────────────────────────────────────────────────────────
-function initFirebase() {
-    try {
-        if (typeof firebase !== 'undefined') {
-            firebase.initializeApp(FIREBASE_CONFIG);
-            db = firebase.database();
-            console.log('Firebase initialized');
-        } else {
-            console.warn('Firebase SDK not loaded — save/load disabled');
-        }
-    } catch (e) {
-        console.warn('Firebase init error:', e.message);
-    }
-}
+// Init handled by firebase-init.js globally.
 
 // ═══ Event Listeners ════════════════════════════════════════════════════════
 
@@ -396,9 +383,23 @@ async function handleGenerate() {
         return;
     }
 
+    const user = firebase.auth().currentUser;
+    if (!user) {
+        showToast('Please log in to generate diagrams.', 'error');
+        return;
+    }
+
+    try {
+        await checkUserLimits(user.uid, user.isAnonymous);
+    } catch (limitError) {
+        showToast(limitError.message, 'error');
+        return;
+    }
+
     generateBtn.classList.add('loading');
     generateBtn.disabled = true;
     updateStatus('loading', 'Generating...');
+
 
     const generateEndpoint = 'http://127.0.0.1:5000/api/generate';
 
@@ -424,6 +425,8 @@ async function handleGenerate() {
             currentTheme = 'default';
             initializeMermaidTheme('default');
         }
+
+        await incrementUserGenerationCount(user.uid, user.isAnonymous);
 
         await renderFromCode(currentMermaidCode);
         updateStatus('ready', 'Generated');
@@ -998,46 +1001,64 @@ async function handleApplyCodeEdit() {
 
 // ═══ Firebase Save & Load ═══════════════════════════════════════════════════
 
-function handleSave() {
+// ═══ Firebase Save & Load ═══════════════════════════════════════════════════
+
+async function handleSave() {
     const nameInput = document.getElementById('save-name');
+    const folderSelect = document.getElementById('save-folder');
+    const folderId = folderSelect ? folderSelect.value : 'folder1';
     const name = nameInput.value.trim();
 
     if (!name) {
-        showToast(`Enter a name for the ${currentMode}.`, 'error');
+        showToast(`Enter a name for the diagram.`, 'error');
         return;
     }
     if (!currentMermaidCode) {
-        showToast(`Generate a ${currentMode} first.`, 'error');
-        return;
-    }
-    if (!db) {
-        showToast('Firebase not initialized.', 'error');
+        showToast(`Generate a diagram first.`, 'error');
         return;
     }
 
-    const flowchartData = {
-        name,
-        code: currentMermaidCode,
-        prompt: promptInput.value,
-        mode: currentMode,
-        createdAt: Date.now()
-    };
+    const user = firebase.auth().currentUser;
+    if (!user) {
+        showToast('You must be logged in to save.', 'error');
+        return;
+    }
 
-    const newRef = db.ref('flowcharts').push();
-    newRef.set(flowchartData)
-        .then(() => {
-            showToast(`Saved "${name}" successfully!`, 'success');
-            closeAllModals();
-            nameInput.value = '';
-        })
-        .catch(err => {
-            showToast('Save failed: ' + err.message, 'error');
-        });
+    // Check Limits (3 folders config, 3 diagrams per folder)
+    const folderRef = db.ref(`users/${user.uid}/folders/${folderId}`);
+    try {
+        const snapshot = await folderRef.once('value');
+        const folderData = snapshot.val() || {};
+        const diagramCount = Object.keys(folderData).length;
+
+        if (diagramCount >= 3) {
+            showToast('Premium Required! Folder is full (max 3 diagrams/folder).', 'error');
+            return;
+        }
+
+        const flowchartData = {
+            name,
+            code: currentMermaidCode,
+            prompt: promptInput.value,
+            mode: currentMode,
+            createdAt: Date.now()
+        };
+
+        const newRef = folderRef.push();
+        await newRef.set(flowchartData);
+
+        showToast(`Saved "${name}" into ${folderId} successfully!`, 'success');
+        closeAllModals();
+        nameInput.value = '';
+    } catch (err) {
+        showToast('Save failed: ' + err.message, 'error');
+    }
 }
 
 function handleOpenLoad() {
-    if (!db) {
-        showToast('Firebase not initialized.', 'error');
+    const user = firebase.auth().currentUser;
+    if (!user) {
+        showToast('Please log in to load.', 'error');
         return;
     }
 
@@ -1045,13 +1066,20 @@ function handleOpenLoad() {
     const listEl = document.getElementById('saved-list');
     listEl.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-muted);">Loading...</div>';
 
-    db.ref('flowcharts').orderByChild('createdAt').limitToLast(20).once('value')
-        .then(snapshot => {
-            const items = [];
-            snapshot.forEach(child => {
-                items.push({ id: child.key, ...child.val() });
+    db.ref(`users/${user.uid}/folders`).once('value')
+        .then(foldersSnap => {
+            const folders = foldersSnap.val() || {};
+            let items = [];
+
+            // Reconstruct array for display
+            Object.keys(folders).forEach(fKey => {
+                const diagrams = folders[fKey];
+                Object.keys(diagrams).forEach(dKey => {
+                    items.push({ id: dKey, folder: fKey, ...diagrams[dKey] });
+                });
             });
-            items.reverse();
+
+            items.sort((a, b) => b.createdAt - a.createdAt);
 
             if (items.length === 0) {
                 listEl.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-muted);">No saved flowcharts.</div>';
@@ -1063,31 +1091,31 @@ function handleOpenLoad() {
                 const div = document.createElement('div');
                 div.className = 'saved-item';
                 div.innerHTML = `
-                        < div >
-                        <div class="saved-item-name">${escapeHtml(item.name)}</div>
+                        <div style="text-align: left;">
+                        <div class="saved-item-name">${escapeHtml(item.name)} <span style="font-size:0.75rem; color:#888;">(${item.folder})</span></div>
                         <div class="saved-item-date">${new Date(item.createdAt).toLocaleDateString()}</div>
-                    </div >
-                            <div class="saved-item-actions">
-                                <button class="saved-item-btn load-item" data-id="${item.id}">Load</button>
-                                <button class="saved-item-btn delete" data-id="${item.id}">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-                                        <line x1="18" y1="6" x2="6" y2="18"></line>
-                                        <line x1="6" y1="6" x2="18" y2="18"></line>
-                                    </svg>
-                                </button>
-                            </div>
+                        </div>
+                        <div class="saved-item-actions">
+                            <button class="saved-item-btn load-item" data-id="${item.id}" data-folder="${item.folder}">Load</button>
+                            <button class="saved-item-btn delete" data-id="${item.id}" data-folder="${item.folder}">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+                                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                                </svg>
+                            </button>
+                        </div>
                 `;
                 listEl.appendChild(div);
             });
 
             listEl.querySelectorAll('.load-item').forEach(btn => {
-                btn.addEventListener('click', () => loadFlowchart(btn.dataset.id));
+                btn.addEventListener('click', () => loadFlowchart(btn.dataset.folder, btn.dataset.id));
             });
 
             listEl.querySelectorAll('.delete').forEach(btn => {
                 btn.addEventListener('click', (e) => {
                     e.stopPropagation();
-                    deleteFlowchart(btn.dataset.id);
+                    deleteFlowchart(btn.dataset.folder, btn.dataset.id);
                 });
             });
         })
@@ -1096,8 +1124,9 @@ function handleOpenLoad() {
         });
 }
 
-function loadFlowchart(id) {
-    db.ref('flowcharts/' + id).once('value')
+function loadFlowchart(folderId, id) {
+    const user = firebase.auth().currentUser;
+    db.ref(`users/${user.uid}/folders/${folderId}/${id}`).once('value')
         .then(snapshot => {
             const data = snapshot.val();
             if (data) {
@@ -1113,9 +1142,10 @@ function loadFlowchart(id) {
         });
 }
 
-function deleteFlowchart(id) {
+function deleteFlowchart(folderId, id) {
     if (confirm('Delete this flowchart?')) {
-        db.ref('flowcharts/' + id).remove()
+        const user = firebase.auth().currentUser;
+        db.ref(`users/${user.uid}/folders/${folderId}/${id}`).remove()
             .then(() => {
                 showToast('Deleted.', 'info');
                 handleOpenLoad();

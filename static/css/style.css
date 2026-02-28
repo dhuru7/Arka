@@ -504,6 +504,26 @@ textarea::placeholder {
     flex-direction: column;
 }
 
+/* ── Top Navigation Bar ─────────────────────────────────────────────────── */
+.top-nav-bar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    padding: 24px;
+    pointer-events: none;
+    /* Let clicks pass through empty areas */
+}
+
+.top-nav-bar>* {
+    pointer-events: auto;
+    /* Re-enable clicks on actual elements */
+}
+
 /* ── Floating Toolbar ───────────────────────────────────────────────────── */
 .toolbar {
     position: absolute;

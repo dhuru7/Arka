@@ -1,0 +1,80 @@
+// Firebase Configuration
+const firebaseConfig = {
+    apiKey: "AIzaSyBHQB9mnI9_0FgBcgSA2B85xHrTdEYmBZA",
+    authDomain: "arka-9686d.firebaseapp.com",
+    databaseURL: "https://arka-9686d-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "arka-9686d",
+    storageBucket: "arka-9686d.firebasestorage.app",
+    messagingSenderId: "1035606198728",
+    appId: "1:1035606198728:web:3ca0e3d18ff2f8c84358fd",
+    measurementId: "G-95K70E0472"
+};
+
+// Initialize Firebase
+if (!firebase.apps.length) {
+    firebase.initializeApp(firebaseConfig);
+}
+const auth = firebase.auth();
+const db = firebase.database();
+
+// Common temporary email domains to block
+const blockedDomains = [
+    'tempmail.com', '10minutemail.com', 'guerrillamail.com',
+    'yopmail.com', 'mailinator.com', 'temp-mail.org',
+    'ethereal.email', 'dispostable.com', 'throwawaymail.com',
+    'tempmailaddress.com', 'mohmal.com', 'getnada.com',
+    'nada.ltd', 'inbox.lv', 'sharklasers.com',
+    'grr.la', 'spam4.me', 'anonbox.net', 'minuteinbox.com'
+];
+
+function isTempEmail(email) {
+    const domain = email.split('@')[1];
+    if (!domain) return true;
+    return blockedDomains.includes(domain.toLowerCase());
+}
+
+async function checkUserLimits(userId, isGuest) {
+    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+
+    // Check local storage or database if they reached generation limits
+    return new Promise((resolve, reject) => {
+        db.ref('users/' + userId).once('value', (snapshot) => {
+            let data = snapshot.val() || {
+                totalGuestDiagrams: 0,
+                dailyUsage: {}
+            };
+
+            // Check Guest Limits
+            if (isGuest && data.totalGuestDiagrams >= 5) {
+                return reject(new Error("Guest limit reached! Please sign up to generate more diagrams."));
+            }
+
+            // Check Daily Limits
+            const todayUsage = data.dailyUsage[today] || 0;
+            if (todayUsage >= 10) {
+                return reject(new Error("Daily limit reached! You can generate a maximum of 10 diagrams per day."));
+            }
+
+            resolve(data);
+        });
+    });
+}
+
+async function incrementUserGenerationCount(userId, isGuest) {
+    const today = new Date().toISOString().split('T')[0];
+
+    // Run an update/transaction to increment limits
+    const userRef = db.ref('users/' + userId);
+    userRef.transaction((currentData) => {
+        if (!currentData) {
+            currentData = { totalGuestDiagrams: 0, dailyUsage: {} };
+        }
+        if (!currentData.dailyUsage) currentData.dailyUsage = {};
+
+        currentData.dailyUsage[today] = (currentData.dailyUsage[today] || 0) + 1;
+        if (isGuest) {
+            currentData.totalGuestDiagrams = (currentData.totalGuestDiagrams || 0) + 1;
+        }
+        return currentData;
+    });
+}
