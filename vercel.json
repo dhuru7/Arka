@@ -57,12 +57,6 @@
             "destination": "/static/:path*"
         }
     ],
-    "functions": {
-        "api/**/*.py": {
-            "runtime": "@vercel/python",
-            "maxDuration": 60
-        }
-    },
     "headers": [
         {
             "source": "/static/(.*)",
